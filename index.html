@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Bahia Etanol | Smart Infrastructure</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+    <div class="modern-dashboard">
+        <aside class="glass-sidebar">
+            <div class="logo-area">
+                <div class="icon-box"><i class="fas fa-microchip"></i></div>
+                <div class="title-box">
+                    <h1>BAHIA ETANOL</h1>
+                    <span class="badge">V 3.0 ONLINE</span>
+                </div>
+            </div>
+
+            <div class="system-health">
+                <div class="health-item">
+                    <label>Status Global</label>
+                    <div class="status-indicator">
+                        <span class="dot active"></span>
+                        <strong id="global-text">ESTÁVEL</strong>
+                    </div>
+                </div>
+                <div class="health-item">
+                    <label>Fluxo de Dados</label>
+                    <div class="progress-bar"><div class="fill" style="width: 85%"></div></div>
+                </div>
+            </div>
+
+            <div id="incident-ui" class="incident-alert hidden">
+                <div class="alert-content">
+                    <i class="fas fa-shield-alt"></i>
+                    <div>
+                        <h4>ANOMALIA DETECTADA</h4>
+                        <p id="fault-location">Setor: Indefinido</p>
+                    </div>
+                </div>
+                <button class="btn-resolve" onclick="repairSystem()">RESTAURAR CONEXÃO</button>
+            </div>
+
+            <div class="sidebar-footer">
+                <p>Monitoramento em tempo real</p>
+                <small>Lat: -17.6427 | Lon: -40.1812</small>
+            </div>
+        </aside>
+
+        <main class="viewport-area">
+            <div class="top-nav">
+                <div class="search-wrapper">
+                    <i class="fas fa-search"></i>
+                    <input type="text" placeholder="Pesquisar setor...">
+                </div>
+                <button class="btn-action fault" onclick="simulateFault()">
+                    <i class="fas fa-bug"></i> SIMULAR INCIDENTE
+                </button>
+            </div>
+
+            <div id="canvas-3d"></div>
+
+            <div class="floating-legend">
+                <div class="leg"><span class="line data"></span> Conexão Ativa</div>
+                <div class="leg"><span class="line error"></span> Alerta Crítico</div>
+            </div>
+        </main>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
