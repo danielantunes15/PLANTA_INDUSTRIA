@@ -20,7 +20,7 @@ const SETORES = [
     
     // Administrativo e Apoio
     { id: "SUPERVISAO", name: "Supervisão", pos: { x: 10, z: -21 }, size: [8, 4, 8] },
-    { id: "OLD", name: "OLD", pos: { x: 36, z: 0 }, size: [5, 3, 5] },
+    { id: "OLD", name: "OLD", pos: { x: 36, z: 0 }, size: [3, 3, 10] },
     { id: "CPD", name: "CPD", pos: { x: 40, z: 22 }, type: 'L', size: [8, 6, 4] },
     
     // Novo Prédio
