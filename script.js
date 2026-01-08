@@ -10,21 +10,21 @@ let INTERSECTED;
 // === 1. CONFIGURAÇÃO DOS SETORES ===
 const SETORES = [
     // Entrada
-    { id: "PORTARIA", name: "Portaria", pos: { x: 12, z: 55 }, size: [4, 3, 4] },
-    { id: "BALANCA", name: "Balança", pos: { x: 4, z: 53 }, size: [4, 3, 4] },
+    { id: "PORTARIA", name: "Portaria", pos: { x: 21, z: 55 }, size: [3, 3, 3] },
+    { id: "BALANCA", name: "Balança", pos: { x: 9, z: 51 }, size: [4, 3, 4] },
     
     // Processos
-    { id: "PCTS", name: "PCTS", pos: { x: 1, z: 41 }, size: [6, 4, 6] },
-    { id: "COI", name: "COI", pos: { x: -11, z: -16 }, size: [5, 4, 5] },
-    { id: "VINHACA", name: "Vinhaça", pos: { x: -31, z: -32 }, size: [6, 2, 6] },
+    { id: "PCTS", name: "PCTS", pos: { x: 7, z: 41 }, size: [6, 4, 6] },
+    { id: "COI", name: "COI", pos: { x: -9, z: -13 }, size: [5, 4, 5] },
+    { id: "VINHACA", name: "Vinhaça", pos: { x: -23, z: -28 }, size: [2, 2, 2] },
     
     // Administrativo e Apoio
-    { id: "SUPERVISAO", name: "Supervisão", pos: { x: 7, z: -25 }, size: [8, 4, 8] },
-    { id: "OLD", name: "OLD", pos: { x: 23, z: 1 }, size: [5, 3, 5] },
-    { id: "CPD", name: "CPD", pos: { x: 23, z: 20 }, type: 'L', size: [8, 6, 4] },
+    { id: "SUPERVISAO", name: "Supervisão", pos: { x: 10, z: -21 }, size: [8, 4, 8] },
+    { id: "OLD", name: "OLD", pos: { x: 36, z: 0 }, size: [5, 3, 5] },
+    { id: "CPD", name: "CPD", pos: { x: 40, z: 22 }, type: 'L', size: [8, 6, 4] },
     
     // Novo Prédio
-    { id: "REFEITORIO", name: "Refeitório", pos: { x: 25, z: 34 }, size: [6, 3, 5] }
+    { id: "REFEITORIO", name: "Refeitório", pos: { x: 40, z: 32 }, size: [6, 3, 5] }
 ];
 
 // === 2. CONEXÕES CORRIGIDAS ===
@@ -164,12 +164,12 @@ function renderStructures() {
     });
 
     // Tanques
-    const tankStart = { x: -22 , z: 7 };
-    const tankEnd = { x: -10, z: 22 };
-    const tankGeo = new THREE.CylinderGeometry(2.5, 2.5, 3.5, 32);
+    const tankStart = { x: -21 , z: 6 };
+    const tankEnd = { x: -5, z: 24};
+    const tankGeo = new THREE.CylinderGeometry(2.5, 2.5, 3.5, 40);
     const tankMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.4, metalness: 0.8 });
 
-    for(let i=0; i<4; i++) {
+    for(let i=0; i<5; i++) {
         const t = i / 3;
         const posX = tankStart.x + (tankEnd.x - tankStart.x) * t;
         const posZ = tankStart.z + (tankEnd.z - tankStart.z) * t;
