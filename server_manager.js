@@ -1,16 +1,21 @@
 const API_URL = 'http://localhost:3000';
-let currentHosts = [];
+let currentHosts = []; // Cache local
 
 window.toggleServerPanel = function() {
     const panel = document.getElementById('server-panel');
     const wasOpen = panel.classList.contains('open');
 
-    // 1. FECHA TODOS OS OUTROS
+    // 1. Fecha outros painéis
     document.querySelectorAll('.editor-sidebar').forEach(el => el.classList.remove('open'));
 
-    // 2. Abre este se necessário
+    // 2. Abre este
     if (!wasOpen) {
         panel.classList.add('open');
+        
+        // --- OTIMIZAÇÃO: RENDERIZA IMEDIATAMENTE (Sem esperar o servidor) ---
+        renderTable(); 
+        
+        // Atualiza dados em segundo plano (silenciosamente)
         loadHostsData();
     }
 };
@@ -59,20 +64,35 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>`;
         document.body.insertAdjacentHTML('beforeend', panelHTML);
     }
+    // Carrega dados iniciais na memória assim que o site abre
     loadHostsData();
 });
 
 async function loadHostsData() {
     try {
         const res = await fetch(`${API_URL}/hosts`);
-        currentHosts = await res.json();
-        renderTable();
-    } catch (e) { console.warn("Erro ao carregar hosts"); }
+        const data = await res.json();
+        // Só atualiza e renderiza se houver dados novos
+        if (JSON.stringify(data) !== JSON.stringify(currentHosts)) {
+            currentHosts = data;
+            // Se o painel estiver aberto, atualiza a visualização
+            if(document.getElementById('server-panel').classList.contains('open')) {
+                renderTable();
+            }
+        }
+    } catch (e) { console.warn("Erro ao carregar hosts (background)"); }
 }
 
 function renderTable() {
     const tbody = document.getElementById('server-tbody');
+    if(!tbody) return;
     tbody.innerHTML = '';
+    
+    if (currentHosts.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; color:#94a3b8">Carregando...</td></tr>';
+        return;
+    }
+
     currentHosts.forEach((host, index) => {
         const tr = document.createElement('tr');
         tr.innerHTML = `

@@ -1,6 +1,5 @@
 const API_URL_SIM = 'http://localhost:3000';
 
-// TORNA O ESTADO ACESSÍVEL PARA O SCRIPT.JS
 window.SIMULATION_STATE = {}; 
 
 const FALLBACK_HOSTS = [
@@ -11,37 +10,38 @@ const FALLBACK_HOSTS = [
     { id: 'VINHACA', name: 'Vinhaça' }
 ];
 
+// Cache local para renderização instantânea
+let cachedHosts = FALLBACK_HOSTS;
+
 window.toggleSimPanel = function() {
     const panel = document.getElementById('sim-panel');
     const wasOpen = panel.classList.contains('open');
     document.querySelectorAll('.editor-sidebar').forEach(el => el.classList.remove('open'));
     if (!wasOpen) {
         panel.classList.add('open');
+        
+        // --- OTIMIZAÇÃO: RENDERIZAÇÃO INSTANTÂNEA ---
+        renderSimList(cachedHosts);
+        
+        // Busca atualização em background
         loadSimStatus();
     }
 };
 
 window.toggleSimulation = async function(sectorId, forceOffline) {
-    // 1. ATUALIZAÇÃO VISUAL IMEDIATA (Sem esperar servidor)
-    if(forceOffline) {
-        window.SIMULATION_STATE[sectorId] = true;
-    } else {
-        delete window.SIMULATION_STATE[sectorId];
-    }
+    if(forceOffline) window.SIMULATION_STATE[sectorId] = true;
+    else delete window.SIMULATION_STATE[sectorId];
     
-    // Atualiza os botões do menu
-    loadSimStatus(); 
+    // Atualiza visualmente NA HORA
+    renderSimList(cachedHosts);
 
-    // 2. TENTA AVISAR O SERVIDOR
     try {
         await fetch(`${API_URL_SIM}/simulation`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ id: sectorId, active: forceOffline })
         });
-    } catch (error) {
-        console.warn("Backend offline, usando simulação local.");
-    }
+    } catch (error) { console.warn("Simulação local (Backend offline)"); }
 };
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -59,34 +59,39 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>`;
         document.body.insertAdjacentHTML('beforeend', panelHTML);
     }
+    // Pré-carregamento silencioso
+    loadSimStatus();
 });
 
 async function loadSimStatus() {
-    let hosts = [];
+    // 1. Atualiza lista de hosts (se servidor estiver online)
     try {
         const resHosts = await fetch(`${API_URL_SIM}/hosts`);
-        hosts = await resHosts.json();
-        if(!hosts || hosts.length === 0) throw new Error();
-    } catch(e) { hosts = FALLBACK_HOSTS; }
+        const data = await resHosts.json();
+        if(data && data.length > 0) cachedHosts = data;
+    } catch(e) { } // Mantém o fallback se falhar
 
-    // Atualiza o estado visual com base no que já temos localmente ou busca do server
+    // 2. Atualiza estado da simulação
     try {
         const resSim = await fetch(`${API_URL_SIM}/simulation`);
         const serverState = await resSim.json();
-        // Mescla estado do servidor com o local
         window.SIMULATION_STATE = { ...window.SIMULATION_STATE, ...serverState };
     } catch(e) { }
 
-    renderSimList(hosts);
+    // Re-renderiza com dados frescos (se o painel estiver aberto)
+    if(document.getElementById('sim-panel').classList.contains('open')) {
+        renderSimList(cachedHosts);
+    }
 }
 
 function renderSimList(hosts) {
     const list = document.getElementById('sim-list');
+    // Verifica se a lista mudou para evitar "piscar" desnecessário do DOM
+    // Mas como é rápido, limpar e refazer garante consistência
     list.innerHTML = '';
+    
     hosts.forEach(host => {
-        // Verifica na variável GLOBAL
         const isDown = window.SIMULATION_STATE[host.id] === true;
-        
         const item = document.createElement('div');
         item.className = 'link-item';
         item.style.justifyContent = 'space-between';

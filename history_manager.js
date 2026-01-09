@@ -1,4 +1,5 @@
 const API_URL_HIST = 'http://localhost:3000';
+let cachedHistory = []; // Cache local
 
 window.toggleHistoryPanel = function() {
     const panel = document.getElementById('history-panel');
@@ -6,13 +7,22 @@ window.toggleHistoryPanel = function() {
     document.querySelectorAll('.editor-sidebar').forEach(el => el.classList.remove('open'));
     if (!wasOpen) {
         panel.classList.add('open');
+        
+        // --- OTIMIZAÇÃO: RENDERIZA CACHE IMEDIATAMENTE ---
+        renderHistoryTable(cachedHistory);
+        
+        // Busca atualização em background
         loadHistoryData();
     }
 };
 
 window.clearHistory = async function() {
     if(!confirm("Limpar histórico?")) return;
-    try { await fetch(`${API_URL_HIST}/history`, { method: 'DELETE' }); loadHistoryData(); } catch (e) {}
+    try { 
+        await fetch(`${API_URL_HIST}/history`, { method: 'DELETE' }); 
+        cachedHistory = [];
+        renderHistoryTable(cachedHistory);
+    } catch (e) {}
 };
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -33,17 +43,37 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>`;
         document.body.insertAdjacentHTML('beforeend', panelHTML);
     }
+    // Carregamento inicial silencioso
+    loadHistoryData();
 });
 
 async function loadHistoryData() {
-    const tbody = document.getElementById('history-tbody');
     try {
         const res = await fetch(`${API_URL_HIST}/history`);
         const data = await res.json();
-        tbody.innerHTML = '';
-        if(data.length===0) tbody.innerHTML = '<tr><td colspan="3" style="text-align:center">Vazio</td></tr>';
-        data.reverse().forEach(log => {
-            tbody.innerHTML += `<tr><td style="color:#cbd5e1">${new Date(log.timestamp).toLocaleTimeString()}</td><td style="font-weight:bold; color:#fb7185">${log.sector}</td><td>${log.duration}</td></tr>`;
-        });
-    } catch (error) { tbody.innerHTML = '<tr><td colspan="3">Erro</td></tr>'; }
+        
+        // Atualiza cache
+        cachedHistory = data;
+        
+        // Se painel aberto, atualiza visual
+        if(document.getElementById('history-panel').classList.contains('open')) {
+            renderHistoryTable(cachedHistory);
+        }
+    } catch (error) { }
+}
+
+function renderHistoryTable(data) {
+    const tbody = document.getElementById('history-tbody');
+    if(!tbody) return;
+    tbody.innerHTML = '';
+    
+    if(!data || data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; color:#64748b">Nenhum registro recente.</td></tr>';
+        return;
+    }
+    
+    // Clona o array e inverte para não alterar o cache original
+    [...data].reverse().forEach(log => {
+        tbody.innerHTML += `<tr><td style="color:#cbd5e1">${new Date(log.timestamp).toLocaleTimeString()}</td><td style="font-weight:bold; color:#fb7185">${log.sector}</td><td>${log.duration}</td></tr>`;
+    });
 }
