@@ -12,7 +12,7 @@ let INTERSECTED;
 const SETORES = [
     { id: "PORTARIA", name: "Portaria", pos: { x: 21, z: 55 }, size: [3, 3, 3] },
     { id: "BALANCA", name: "Balança", pos: { x: 9, z: 51 }, size: [4, 3, 4] },
-    { id: "PCTS", name: "PCTS", pos: { x: 7, z: 41 }, size: [6, 4, 6] },
+    { id: "PCTS", name: "PCTS", pos: { x: 7, z: 37 }, size: [3, 3, 3] },
     { id: "COI", name: "COI", pos: { x: -9, z: -13 }, size: [5, 4, 5] },
     { id: "VINHACA", name: "Vinhaça", pos: { x: -23, z: -28 }, size: [2, 2, 2] },
     { id: "SUPERVISAO", name: "Supervisão", pos: { x: 10, z: -21 }, size: [8, 4, 8] },
@@ -156,7 +156,7 @@ function renderStructures() {
         scene.add(ring);
         pulsingRings.push(ring); 
 
-        // Rótulo HTML (Nome)
+        // Rótulo HTML (Nome do Setor)
         const labelDiv = document.createElement('div');
         labelDiv.className = 'label-tag';
         labelDiv.textContent = s.name;
@@ -164,13 +164,18 @@ function renderStructures() {
         label.position.set(0, (mesh.scale.y/2) + 1.5, 0);
         mesh.add(label);
 
-        // === ÍCONE DE ALERTA FLUTUANTE (Novo) ===
-        const warnDiv = document.createElement('div');
-        warnDiv.className = 'warning-badge';
-        warnDiv.innerHTML = '<i class="fas fa-exclamation-triangle"></i>'; 
-        const warnLabel = new THREE.CSS2DObject(warnDiv);
-        warnLabel.position.set(0, (mesh.scale.y/2) + 4, 0); 
-        warnLabel.visible = false; // Começa invisível
+        // === ÍCONE DE ALERTA (CORRIGIDO: Mais perto do prédio) ===
+        const warnContainer = document.createElement('div');
+        const warnIcon = document.createElement('div');
+        warnIcon.className = 'warning-badge';
+        warnIcon.innerHTML = '<i class="fas fa-exclamation-triangle"></i>'; 
+        warnContainer.appendChild(warnIcon);
+
+        const warnLabel = new THREE.CSS2DObject(warnContainer);
+        // AQUI ESTÁ A CORREÇÃO: Mudei de +4 para +1.5
+        warnLabel.position.set(0, (mesh.scale.y/2) + 1.5, 0); 
+        warnLabel.visible = false; 
+
         mesh.add(warnLabel);
         mesh.userData.warningObj = warnLabel;
     });
@@ -230,7 +235,7 @@ function drawCable(p1, p2, idFrom, idTo) {
     cables.push(packet);
 }
 
-// === MONITORAMENTO INTELIGENTE (STATUS TRIPLO) ===
+// === MONITORAMENTO INTELIGENTE ===
 async function checkNetworkStatus() {
     let serverData = [];
     try {
@@ -240,7 +245,7 @@ async function checkNetworkStatus() {
     } catch (error) { serverData = []; }
     
     networkData = serverData;
-    let globalStatus = 'OK'; // OK, WARNING, CRITICAL
+    let globalStatus = 'OK'; 
 
     const statusMap = {}; 
 
@@ -250,7 +255,6 @@ async function checkNetworkStatus() {
         
         statusMap[s.id] = { status: currentStatus };
 
-        // Define prioridade do status global
         if(currentStatus === 'CRITICAL') globalStatus = 'CRITICAL';
         else if(currentStatus === 'WARNING' && globalStatus !== 'CRITICAL') globalStatus = 'WARNING';
     });
@@ -262,13 +266,13 @@ async function checkNetworkStatus() {
         if(mesh.userData.type === 'building') {
             const info = statusMap[mesh.userData.id] || { status: 'OK' };
             const ring = pulsingRings.find(r => r.userData.id === mesh.userData.id);
-            const warnIcon = mesh.userData.warningObj;
+            const warnLabel = mesh.userData.warningObj; 
 
-            // Reset visual
+            // Reset
             if(INTERSECTED !== mesh) mesh.material.color.setHex(0x1e293b);
             if(mesh.userData.lineObj) mesh.userData.lineObj.material.color.setHex(0x38bdf8);
             if(ring) ring.visible = false;
-            if(warnIcon) warnIcon.visible = false;
+            if(warnLabel) warnLabel.visible = false;
 
             // Aplica Estados
             if (info.status === 'CRITICAL') {
@@ -290,8 +294,8 @@ async function checkNetworkStatus() {
                     ring.visible = true;
                 }
                 
-                if(warnIcon) {
-                    warnIcon.visible = true; // Mostra ícone flutuante
+                if(warnLabel) {
+                    warnLabel.visible = true; 
                 }
             }
         }
@@ -325,7 +329,7 @@ async function checkNetworkStatus() {
         globalText.style.color = "#fb7185";
     } else if (globalStatus === 'WARNING') {
         statusDot.className = "dot"; 
-        statusDot.style.background = "#facc15"; // Força amarelo
+        statusDot.style.background = "#facc15"; 
         statusDot.style.boxShadow = "0 0 10px #facc15";
         globalText.innerText = "ALERTA / ATENÇÃO";
         globalText.style.color = "#facc15";
@@ -434,7 +438,7 @@ function onDocumentMouseDown(event) {
                 
                 net.devices.forEach(dev => {
                     const icon = dev.online ? '✅' : '🔴';
-                    const color = dev.online ? '#cbd5e1' : '#fb7185'; // Vermelho se offline
+                    const color = dev.online ? '#cbd5e1' : '#fb7185';
                     detailsHTML += `
                         <div style="font-size:11px; display:flex; justify-content:space-between; margin-top:3px; color:${color}">
                             <span>${icon} ${dev.name}</span>
@@ -515,7 +519,7 @@ function animate() {
                 const s = statusMap[INTERSECTED.userData.id]?.status;
                 if(s==='CRITICAL') INTERSECTED.material.color.setHex(0xff4444);
                 else if(s==='WARNING') INTERSECTED.material.color.setHex(0xffcc00);
-                else INTERSECTED.material.color.setHex(0x38bdf8); // Azul highlight
+                else INTERSECTED.material.color.setHex(0x38bdf8);
             }
             document.body.style.cursor = 'pointer';
         }
