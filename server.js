@@ -9,13 +9,15 @@ app.use(cors());
 app.use(express.json());
 
 // --- CONFIGURAÇÃO ---
-const PING_INTERVAL = 3 * 60 * 1000; // 3 Minutos (Conforme solicitado)
+const PING_INTERVAL = 3 * 60 * 1000; // 3 Minutos
 
+// Configurações do Ping
 const PING_CONFIG = {
-    timeout: 10,
-    extra: ['-i', '1']
+    timeout: 10,       
+    extra: ['-i', '1'] 
 };
 
+// Cache em memória
 let cachedStatus = [];
 
 // --- DADOS DE FALLBACK (BACKUP) ---
@@ -31,7 +33,7 @@ const FALLBACK_DATA = [
     { id: 'VINHACA', name: 'Vinhaça', ip: '192.168.36.20' }
 ];
 
-// --- FUNÇÃO DE PING AUTOMÁTICO ---
+// --- FUNÇÃO DE PING AUTOMÁTICO (STATUS TRIPLO) ---
 async function runPingCycle() {
     console.log(`\n[${new Date().toLocaleTimeString()}] --- Iniciando Ciclo de Ping Detalhado ---`);
     
@@ -68,7 +70,7 @@ async function runPingCycle() {
             } catch (err) { hostAlive = false; }
         }
 
-        // B. Ping nos Dispositivos Deste Setor (Impressoras, Câmeras...)
+        // B. Ping nos Dispositivos Deste Setor
         const sectorDevices = allDevices.filter(d => d.sector_id === host.id);
         const deviceStatuses = [];
 
@@ -85,19 +87,24 @@ async function runPingCycle() {
                 ip: dev.ip,
                 online: devAlive
             });
-            console.log(`   -> Device [${host.id}] ${dev.name}: ${devAlive ? 'OK' : 'FALHA'}`);
         }
 
-        // Lógica de Alerta: Se o host caiu OU algum device caiu
+        // --- C. LÓGICA DE STATUS (CRITICAL vs WARNING vs OK) ---
         const anyDeviceDown = deviceStatuses.some(d => !d.online);
-        const isCritical = !hostAlive || anyDeviceDown;
+        let status = 'OK';
 
-        // 3. Registro de Histórico (Se mudou de status para erro)
+        if (!hostAlive) {
+            status = 'CRITICAL'; // Vermelho: Switch caiu, parou o setor todo
+        } else if (anyDeviceDown) {
+            status = 'WARNING';  // Amarelo: Switch on, mas alguma impressora/camera caiu
+        }
+
+        // 3. Registro de Histórico (Só se o status mudar para algo ruim)
         const previous = cachedStatus.find(c => c.id === host.id);
-        const wasClean = previous ? (!previous.hasIssue) : true;
+        const prevStatus = previous ? previous.status : 'OK';
 
-        if (wasClean && isCritical) {
-            const reason = !hostAlive ? "Switch Offline" : "Falha em Equipamento";
+        if (status !== 'OK' && status !== prevStatus) {
+            const reason = status === 'CRITICAL' ? "Switch Offline" : "Falha em Equipamento";
             logHistory(host.id, reason);
         }
 
@@ -105,29 +112,30 @@ async function runPingCycle() {
             id: host.id,
             name: host.name,
             ip: hostIp,
-            online: hostAlive, // Status do Switch
-            devices: deviceStatuses, // Lista de equipamentos
-            hasIssue: isCritical, // Flag global de problema no setor
+            online: hostAlive,      // Status binário do switch
+            devices: deviceStatuses,// Lista detalhada
+            status: status,         // OK, WARNING, CRITICAL
             latency: hostLatency,
             last_check: checkTime
         });
 
-        console.log(`> Setor ${host.name}: ${isCritical ? 'ALERTA 🔴' : 'NORMAL 🟢'}`);
+        const icon = status === 'CRITICAL' ? '🔴' : (status === 'WARNING' ? '⚠️' : '🟢');
+        console.log(`> [${status}] ${host.name} ${icon}`);
     }
 
     cachedStatus = results;
-    console.log(`Ciclo concluído.\n`);
+    console.log(`Ciclo concluído. Atualizado em: ${checkTime}\n`);
 }
 
-// Inicia
+// Inicia o ciclo
 runPingCycle();
 setInterval(runPingCycle, PING_INTERVAL);
 
-// --- ROTAS ---
+// --- ROTAS DA API ---
 
 app.get('/status-rede', (req, res) => res.json(cachedStatus));
 
-// CRUD Hosts (Switches)
+// CRUD Hosts
 app.get('/hosts', async (req, res) => {
     const { data } = await supabase.from('hosts').select('*').order('name');
     res.json(data || []);
@@ -138,24 +146,20 @@ app.post('/hosts', async (req, res) => {
     res.json({ success: true });
 });
 
-// CRUD Devices (Novos Equipamentos)
+// CRUD Devices
 app.get('/devices', async (req, res) => {
     const { sector } = req.query;
     let query = supabase.from('devices').select('*');
     if(sector) query = query.eq('sector_id', sector);
-    
     const { data, error } = await query;
     if(error) return res.status(500).json([]);
     res.json(data);
 });
-
 app.post('/devices', async (req, res) => {
-    // Recebe { sector_id, name, ip }
     const { error } = await supabase.from('devices').insert(req.body);
     if(error) return res.status(500).json({error: error.message});
     res.json({ success: true });
 });
-
 app.delete('/devices/:id', async (req, res) => {
     const { error } = await supabase.from('devices').delete().eq('id', req.params.id);
     if(error) return res.status(500).json({error: error.message});
@@ -179,7 +183,7 @@ async function logHistory(sectorId, reason) {
             sector: sectorId,
             duration: reason
         }]);
-    } catch(e) {}
+    } catch(e) { console.error("Erro ao salvar histórico:", e); }
 }
 
-app.listen(3000, () => console.log('Monitoramento Avançado Rodando na porta 3000!'));
+app.listen(3000, () => console.log('Servidor Rodando na porta 3000!'));

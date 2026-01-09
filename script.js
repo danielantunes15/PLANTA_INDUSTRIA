@@ -28,7 +28,7 @@ let activeLinks = [
     { from: "OLD", to: "SUPERVISAO" },
     { from: "OLD", to: "COI" },
     { from: "OLD", to: "PCTS" },
-    { from: "COI", to: "VINHACA" },
+    { from: "SUPERVISAO", to: "VINHACA" },
     { from: "PCTS", to: "BALANCA" },
     { from: "BALANCA", to: "PORTARIA" }
 ];
@@ -77,7 +77,7 @@ function init() {
     sun.castShadow = true;
     scene.add(sun);
 
-    // Inicialização do Ambiente 3D
+    // Inicialização
     createEnvironment();
     renderStructures();
     renderCables();
@@ -91,6 +91,7 @@ function init() {
     document.addEventListener('mousemove', onDocumentMouseMove, false);
     renderer.domElement.addEventListener('pointerdown', onDocumentMouseDown, false);
     setupSearch();
+    initEditor();
 
     animate();
 }
@@ -108,7 +109,6 @@ function createEnvironment() {
         },
         undefined,
         function(err) {
-            // Fallback se a imagem não carregar
             const planeMat = new THREE.MeshStandardMaterial({ color: 0x222222, side: THREE.DoubleSide });
             const floor = new THREE.Mesh(new THREE.PlaneGeometry(120, 120), planeMat);
             floor.rotation.x = -Math.PI / 2;
@@ -123,14 +123,10 @@ function renderStructures() {
     const ringGeo = new THREE.RingGeometry(2.5, 3.5, 32); 
 
     SETORES.forEach(s => {
-        // Material base do prédio
         const mat = new THREE.MeshPhysicalMaterial({ 
             color: 0x1e293b, 
-            transparent: true, 
-            opacity: 0.7, 
-            roughness: 0.2, 
-            metalness: 0.6, 
-            clearcoat: 1.0
+            transparent: true, opacity: 0.7, 
+            roughness: 0.2, metalness: 0.6, clearcoat: 1.0
         });
 
         const mesh = new THREE.Mesh(geoNormal, mat);
@@ -143,7 +139,7 @@ function renderStructures() {
         scene.add(mesh);
         interactables.push(mesh);
 
-        // Bordas neon
+        // Bordas
         const edges = new THREE.EdgesGeometry(new THREE.BoxGeometry(mesh.scale.x, mesh.scale.y, mesh.scale.z));
         const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x38bdf8 }));
         line.position.copy(mesh.position);
@@ -151,12 +147,7 @@ function renderStructures() {
         mesh.userData.lineObj = line; 
 
         // Anel de Alerta (Pulsante)
-        const ringMat = new THREE.MeshBasicMaterial({ 
-            color: 0xff0000, 
-            transparent: true, 
-            opacity: 0, 
-            side: THREE.DoubleSide 
-        });
+        const ringMat = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0, side: THREE.DoubleSide });
         const ring = new THREE.Mesh(ringGeo, ringMat);
         ring.rotation.x = -Math.PI / 2;
         ring.position.set(s.pos.x, 0.2, s.pos.z);
@@ -165,16 +156,26 @@ function renderStructures() {
         scene.add(ring);
         pulsingRings.push(ring); 
 
-        // Rótulo HTML
+        // Rótulo HTML (Nome)
         const labelDiv = document.createElement('div');
         labelDiv.className = 'label-tag';
         labelDiv.textContent = s.name;
         const label = new THREE.CSS2DObject(labelDiv);
         label.position.set(0, (mesh.scale.y/2) + 1.5, 0);
         mesh.add(label);
+
+        // === ÍCONE DE ALERTA FLUTUANTE (Novo) ===
+        const warnDiv = document.createElement('div');
+        warnDiv.className = 'warning-badge';
+        warnDiv.innerHTML = '<i class="fas fa-exclamation-triangle"></i>'; 
+        const warnLabel = new THREE.CSS2DObject(warnDiv);
+        warnLabel.position.set(0, (mesh.scale.y/2) + 4, 0); 
+        warnLabel.visible = false; // Começa invisível
+        mesh.add(warnLabel);
+        mesh.userData.warningObj = warnLabel;
     });
 
-    // Tanques (Decorativos)
+    // Tanques
     const tankGeo = new THREE.CylinderGeometry(2.5, 2.5, 3.5, 40);
     const tankMat = new THREE.MeshStandardMaterial({ color: 0x475569 });
     for(let i=0; i<5; i++) {
@@ -183,7 +184,6 @@ function renderStructures() {
         const posZ = 6 + (24 - 6) * t;
         const tank = new THREE.Mesh(tankGeo, tankMat);
         tank.position.set(posX, 1.75, posZ);
-        
         const edges = new THREE.EdgesGeometry(tankGeo);
         const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x38bdf8 }));
         tank.add(line);
@@ -221,7 +221,7 @@ function drawCable(p1, p2, idFrom, idTo) {
     scene.add(tube);
     cables.push(tube);
     
-    // Pacote de dados (animação)
+    // Pacote de dados
     const packetGeo = new THREE.BoxGeometry(0.4, 0.4, 0.4); 
     const packetMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
     const packet = new THREE.Mesh(packetGeo, packetMat);
@@ -230,7 +230,7 @@ function drawCable(p1, p2, idFrom, idTo) {
     cables.push(packet);
 }
 
-// === MONITORAMENTO INTELIGENTE ===
+// === MONITORAMENTO INTELIGENTE (STATUS TRIPLO) ===
 async function checkNetworkStatus() {
     let serverData = [];
     try {
@@ -240,39 +240,59 @@ async function checkNetworkStatus() {
     } catch (error) { serverData = []; }
     
     networkData = serverData;
-    let hasError = false;
+    let globalStatus = 'OK'; // OK, WARNING, CRITICAL
 
-    // Mapa de Status
     const statusMap = {}; 
 
     SETORES.forEach(s => {
         const net = serverData.find(d => d.id === s.id);
+        const currentStatus = net ? (net.status || 'OK') : 'OK';
         
-        // Se net.hasIssue for true, significa que o switch OU algum device caiu
-        const isProblem = net ? net.hasIssue : false;
-        
-        statusMap[s.id] = { isDown: isProblem };
-        if(isProblem) hasError = true;
+        statusMap[s.id] = { status: currentStatus };
+
+        // Define prioridade do status global
+        if(currentStatus === 'CRITICAL') globalStatus = 'CRITICAL';
+        else if(currentStatus === 'WARNING' && globalStatus !== 'CRITICAL') globalStatus = 'WARNING';
     });
 
     finalSectorStatus = statusMap;
 
-    // Atualiza Visual dos Prédios
+    // Atualiza Visual 3D
     interactables.forEach(mesh => {
         if(mesh.userData.type === 'building') {
-            const statusInfo = statusMap[mesh.userData.id] || { isDown: false };
+            const info = statusMap[mesh.userData.id] || { status: 'OK' };
             const ring = pulsingRings.find(r => r.userData.id === mesh.userData.id);
+            const warnIcon = mesh.userData.warningObj;
 
-            if (statusInfo.isDown) {
-                // COR DE ALERTA (Vermelho)
+            // Reset visual
+            if(INTERSECTED !== mesh) mesh.material.color.setHex(0x1e293b);
+            if(mesh.userData.lineObj) mesh.userData.lineObj.material.color.setHex(0x38bdf8);
+            if(ring) ring.visible = false;
+            if(warnIcon) warnIcon.visible = false;
+
+            // Aplica Estados
+            if (info.status === 'CRITICAL') {
+                // VERMELHO (Switch Caiu)
                 mesh.material.color.setHex(0xff0000); 
                 if(mesh.userData.lineObj) mesh.userData.lineObj.material.color.setHex(0xff0000);
-                if(ring) ring.visible = true;
-            } else {
-                // COR NORMAL (Azul Escuro / Neon)
-                if(INTERSECTED !== mesh) mesh.material.color.setHex(0x1e293b);
-                if(mesh.userData.lineObj) mesh.userData.lineObj.material.color.setHex(0x38bdf8);
-                if(ring) ring.visible = false;
+                if(ring) {
+                    ring.material.color.setHex(0xff0000);
+                    ring.visible = true;
+                }
+            } 
+            else if (info.status === 'WARNING') {
+                // AMARELO (Equipamento Caiu)
+                mesh.material.color.setHex(0xffaa00);
+                if(mesh.userData.lineObj) mesh.userData.lineObj.material.color.setHex(0xfacc15);
+                
+                if(ring) {
+                    ring.material.color.setHex(0xffff00);
+                    ring.visible = true;
+                }
+                
+                if(warnIcon) {
+                    warnIcon.visible = true; // Mostra ícone flutuante
+                }
             }
         }
     });
@@ -280,13 +300,13 @@ async function checkNetworkStatus() {
     // Atualiza Cabos
     cables.forEach(obj => {
         if(obj.userData.isCable) {
-            const fromStatus = statusMap[obj.userData.from];
-            const toStatus = statusMap[obj.userData.to];
-            const fromDown = fromStatus && fromStatus.isDown;
-            const toDown = toStatus && toStatus.isDown;
-
-            if (fromDown || toDown) {
+            const fs = statusMap[obj.userData.from]?.status;
+            const ts = statusMap[obj.userData.to]?.status;
+            
+            if (fs === 'CRITICAL' || ts === 'CRITICAL') {
                 obj.material.color.setHex(0xff0000); 
+            } else if (fs === 'WARNING' || ts === 'WARNING') {
+                obj.material.color.setHex(0xffaa00);
             } else {
                 obj.material.color.setHex(0x0ea5e9);
             }
@@ -296,18 +316,29 @@ async function checkNetworkStatus() {
     // UI Global
     const statusDot = document.getElementById('status-dot');
     const globalText = document.getElementById('global-text');
-    if(hasError) {
+    
+    if(globalStatus === 'CRITICAL') {
         statusDot.className = "dot danger";
-        globalText.innerText = "ALERTA / FALHA";
+        statusDot.style.background = ""; 
+        statusDot.style.boxShadow = "";
+        globalText.innerText = "FALHA CRÍTICA";
         globalText.style.color = "#fb7185";
+    } else if (globalStatus === 'WARNING') {
+        statusDot.className = "dot"; 
+        statusDot.style.background = "#facc15"; // Força amarelo
+        statusDot.style.boxShadow = "0 0 10px #facc15";
+        globalText.innerText = "ALERTA / ATENÇÃO";
+        globalText.style.color = "#facc15";
     } else {
         statusDot.className = "dot active";
+        statusDot.style.background = ""; 
+        statusDot.style.boxShadow = "";
         globalText.innerText = "OPERACIONAL";
         globalText.style.color = "#2dd4bf";
     }
 }
 
-// === INTERFACE DO EDITOR DE REDE (CORRIGIDO) ===
+// === INTERFACE DO EDITOR DE REDE ===
 function initEditor() {
     const s1 = document.getElementById('from-sector');
     const s2 = document.getElementById('to-sector');
@@ -324,11 +355,7 @@ function initEditor() {
 function toggleEditor() { 
     const panel = document.getElementById('network-editor');
     const wasOpen = panel.classList.contains('open'); 
-
-    // Fecha TODOS os painéis laterais primeiro
     document.querySelectorAll('.editor-sidebar').forEach(el => el.classList.remove('open'));
-
-    // Se não estava aberto, abre agora
     if (!wasOpen) {
         panel.classList.add('open'); 
         initEditor(); 
@@ -391,14 +418,13 @@ function onDocumentMouseDown(event) {
         if(net) {
             document.getElementById('sector-ip').innerText = "Switch IP: " + (net.ip || 'Não Configurado');
             
-            // Visualização detalhada (Switch + Equipamentos)
             let detailsHTML = '';
             
             // Status do Switch
-            if(net.online) {
-                detailsHTML += `<div style="margin-bottom:8px; color:#2dd4bf; font-weight:bold;">✅ Switch: ONLINE</div>`;
-            } else {
+            if(net.status === 'CRITICAL') {
                 detailsHTML += `<div style="margin-bottom:8px; color:#fb7185; font-weight:bold;">❌ Switch: OFFLINE</div>`;
+            } else {
+                detailsHTML += `<div style="margin-bottom:8px; color:#2dd4bf; font-weight:bold;">✅ Switch: ONLINE</div>`;
             }
 
             // Lista de Equipamentos
@@ -408,7 +434,7 @@ function onDocumentMouseDown(event) {
                 
                 net.devices.forEach(dev => {
                     const icon = dev.online ? '✅' : '🔴';
-                    const color = dev.online ? '#cbd5e1' : '#fb7185';
+                    const color = dev.online ? '#cbd5e1' : '#fb7185'; // Vermelho se offline
                     detailsHTML += `
                         <div style="font-size:11px; display:flex; justify-content:space-between; margin-top:3px; color:${color}">
                             <span>${icon} ${dev.name}</span>
@@ -418,13 +444,13 @@ function onDocumentMouseDown(event) {
                 });
                 detailsHTML += `</div>`;
             } else {
-                detailsHTML += `<div style="font-size:10px; color:#64748b; margin-top:5px;">Nenhum equipamento extra monitorado.</div>`;
+                detailsHTML += `<div style="font-size:10px; color:#64748b; margin-top:5px;">Nenhum equipamento extra.</div>`;
             }
 
             msg.innerHTML = detailsHTML;
         } else {
             document.getElementById('sector-ip').innerText = "Sem dados";
-            msg.innerText = "Aguardando servidor...";
+            msg.innerText = "Aguardando...";
         }
     }
 }
@@ -462,7 +488,7 @@ function animate() {
 
     const time = Date.now() * 0.003; 
 
-    // Animação dos Anéis de Alerta
+    // Animação dos Anéis
     pulsingRings.forEach(ring => {
         if(ring.visible) {
             const scale = 1 + (Math.sin(time) * 0.3 + 0.3);
@@ -478,32 +504,32 @@ function animate() {
 
     if(hits.length>0) {
         if(INTERSECTED!=hits[0].object) {
-            // Restaura cor do objeto anterior
             if(INTERSECTED && INTERSECTED.userData.type==='building') {
-                const isErr = statusMap[INTERSECTED.userData.id]?.isDown;
-                if(isErr) INTERSECTED.material.color.setHex(0xff0000);
+                const s = statusMap[INTERSECTED.userData.id]?.status;
+                if(s==='CRITICAL') INTERSECTED.material.color.setHex(0xff0000);
+                else if(s==='WARNING') INTERSECTED.material.color.setHex(0xffaa00);
                 else INTERSECTED.material.color.setHex(0x1e293b);
             }
-            // Define novo objeto focado
             INTERSECTED = hits[0].object;
             if(INTERSECTED.userData.type==='building') {
-                const isErr = statusMap[INTERSECTED.userData.id]?.isDown;
-                if(isErr) INTERSECTED.material.color.setHex(0xff4444); 
-                else INTERSECTED.material.color.setHex(0x38bdf8); 
+                const s = statusMap[INTERSECTED.userData.id]?.status;
+                if(s==='CRITICAL') INTERSECTED.material.color.setHex(0xff4444);
+                else if(s==='WARNING') INTERSECTED.material.color.setHex(0xffcc00);
+                else INTERSECTED.material.color.setHex(0x38bdf8); // Azul highlight
             }
             document.body.style.cursor = 'pointer';
         }
     } else {
         if(INTERSECTED && INTERSECTED.userData.type==='building') {
-            const isErr = statusMap[INTERSECTED.userData.id]?.isDown;
-            if(isErr) INTERSECTED.material.color.setHex(0xff0000);
+            const s = statusMap[INTERSECTED.userData.id]?.status;
+            if(s==='CRITICAL') INTERSECTED.material.color.setHex(0xff0000);
+            else if(s==='WARNING') INTERSECTED.material.color.setHex(0xffaa00);
             else INTERSECTED.material.color.setHex(0x1e293b);
         }
         INTERSECTED = null;
         document.body.style.cursor = 'default';
     }
 
-    // Animação dos pacotes nos cabos
     cables.forEach(o => {
         if(o.userData.curve) {
             o.userData.progress += o.userData.speed;
@@ -517,5 +543,4 @@ function animate() {
     labelRenderer.render(scene, camera);
 }
 
-// Inicia aplicação
 init();
