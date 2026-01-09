@@ -92,7 +92,7 @@
                 </button>
                 
                 <button onclick="toggleSimPanel()" class="btn-menu-server">
-                    <i class="fas fa-bolt"></i> SIMULAR FALHAS
+                    <i class="fas fa-heartbeat"></i> STATUS TEMPO REAL
                 </button>
             </div>
 
@@ -105,7 +105,7 @@
 
             <div class="sidebar-footer">
                 <p>Sistema Integrado</p>
-                <small>v6.0 - Final Build</small>
+                <small>v6.1 - Live Ping</small>
             </div>
         </aside>
 
@@ -147,9 +147,14 @@
             </div>
         </div>
 
-        </div>
+    </div>
     
-    <script src="script.js"></script>            <script src="server_manager.js"></script>    <script src="history_manager.js"></script>   <script src="simulation_manager.js"></script> <script>
+    <script src="script.js"></script>            
+    <script src="server_manager.js"></script>    
+    <script src="history_manager.js"></script>   
+    <script src="simulation_manager.js"></script> 
+    
+    <script>
         // Função auxiliar para o menu mobile (caso necessário)
         function toggleSidebar() {
             document.getElementById('sidebar').classList.toggle('mobile-open');

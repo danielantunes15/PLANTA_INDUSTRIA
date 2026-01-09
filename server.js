@@ -1,124 +1,111 @@
 const express = require('express');
 const ping = require('ping');
 const cors = require('cors');
-const fs = require('fs');
+const supabase = require('./supabase');
+
 const app = express();
 
 app.use(cors());
 app.use(express.json());
 
-const HOSTS_PATH = './hosts.json';
-const HISTORY_PATH = './history.json';
+// CONFIGURAÇÃO
+const PING_INTERVAL = 5 * 60 * 1000; // 5 Minutos
 
-// Estado em memória
-let simulationOverrides = {}; 
-let hostStatusMemory = {}; 
+// Cache em memória
+let cachedStatus = [];
 
-// Dados padrão (Fallback)
-const initialData = [
-    { id: 'REFEITORIO', name: 'Refeitório', equipment: 'Switch Mikrotik', ip: '192.168.39.1' },
-    { id: 'CPD', name: 'CPD', equipment: 'Switch Adm', ip: '192.168.36.53' },
-    { id: 'OLD', name: 'OLD', equipment: 'Switch Mikrotik CSS', ip: '192.168.36.60' },
-    { id: 'SUPERVISAO', name: 'Supervisão', equipment: 'Switch Oficina', ip: '192.168.36.14' },
-    { id: 'COI', name: 'COI', equipment: 'Switch COI', ip: '192.168.36.15' },
-    { id: 'PCTS', name: 'PCTS', equipment: 'Switch PCTS', ip: '192.168.36.17' },
-    { id: 'BALANCA', name: 'Balança', equipment: 'Switch Balança', ip: '192.168.36.18' },
-    { id: 'PORTARIA', name: 'Portaria', equipment: 'Switch Portaria', ip: '192.168.36.19' },
-    { id: 'VINHACA', name: 'Vinhaça', equipment: 'Radio Link', ip: '192.168.36.20' }
+// Dados de Fallback (Padrão)
+const FALLBACK_DATA = [
+    { id: 'REFEITORIO', name: 'Refeitório', ip: '192.168.39.1' },
+    { id: 'CPD', name: 'CPD', ip: '192.168.36.53' }
 ];
 
-// Inicialização dos arquivos
-if (!fs.existsSync(HOSTS_PATH)) fs.writeFileSync(HOSTS_PATH, JSON.stringify(initialData, null, 2));
-if (!fs.existsSync(HISTORY_PATH)) fs.writeFileSync(HISTORY_PATH, JSON.stringify([], null, 2));
-
-// --- ROTAS ---
-
-app.get('/hosts', (req, res) => {
-    try { res.json(JSON.parse(fs.readFileSync(HOSTS_PATH))); } 
-    catch (e) { res.json(initialData); }
-});
-
-app.post('/hosts', (req, res) => {
-    try {
-        fs.writeFileSync(HOSTS_PATH, JSON.stringify(req.body, null, 2));
-        res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: "Erro ao salvar" }); }
-});
-
-app.get('/simulation', (req, res) => res.json(simulationOverrides));
-
-app.post('/simulation', (req, res) => {
-    const { id, active } = req.body;
-    if (active) simulationOverrides[id] = true;
-    else delete simulationOverrides[id];
-    res.json({ success: true });
-});
-
-app.get('/history', (req, res) => {
-    try { res.json(JSON.parse(fs.readFileSync(HISTORY_PATH))); }
-    catch (e) { res.json([]); }
-});
-
-app.delete('/history', (req, res) => {
-    fs.writeFileSync(HISTORY_PATH, JSON.stringify([], null, 2));
-    res.json({ success: true });
-});
-
-function logHistory(sectorId) {
-    try {
-        const history = JSON.parse(fs.readFileSync(HISTORY_PATH));
-        history.push({
-            timestamp: new Date().toISOString(),
-            sector: sectorId,
-            duration: "Detectado"
-        });
-        if (history.length > 50) history.shift();
-        fs.writeFileSync(HISTORY_PATH, JSON.stringify(history, null, 2));
-    } catch (e) { console.error(e); }
-}
-
-// ROTA PRINCIPAL DE MONITORAMENTO
-app.get('/status-rede', async (req, res) => {
+// --- FUNÇÃO DE PING AUTOMÁTICO ---
+async function runPingCycle() {
+    console.log(`[${new Date().toLocaleTimeString()}] Iniciando Ping Geral...`);
+    
+    // 1. Busca lista do Banco (ou usa fallback)
     let hosts = [];
-    try { hosts = JSON.parse(fs.readFileSync(HOSTS_PATH)); } 
-    catch (e) { hosts = initialData; }
+    try { 
+        const { data } = await supabase.from('hosts').select('*').order('name'); // Ordena por nome para facilitar leitura
+        hosts = (data && data.length > 0) ? data : FALLBACK_DATA;
+    } catch (e) { hosts = FALLBACK_DATA; }
 
     const results = [];
-    
+    // DATA E HORA COMPLETA
+    const checkTime = new Date().toLocaleString('pt-BR'); 
+
+    // 2. Faz o Ping
     for(let host of hosts){
         let isAlive = false;
-        let time = 'timeout';
+        let latency = 'timeout';
 
-        // 1. Verifica Simulação
-        if (simulationOverrides[host.id]) {
-            isAlive = false; // Força offline
-            time = 'SIMULATED_DOWN';
-        } else {
-            // 2. Ping Real
+        if(host.ip) {
             try {
-                const resPing = await ping.promise.probe(host.ip, { timeout: 1, min_reply: 1 });
-                isAlive = resPing.alive;
-                time = resPing.time;
+                const res = await ping.promise.probe(host.ip, { timeout: 2, min_reply: 1 });
+                isAlive = res.alive;
+                latency = isAlive ? res.time + 'ms' : 'timeout';
             } catch (err) { isAlive = false; }
         }
 
-        // 3. Registro de Histórico (Borda de descida: Online -> Offline)
-        const previousState = hostStatusMemory[host.id];
-        if ((previousState === true || previousState === undefined) && isAlive === false) {
+        // 3. Verifica Queda para Histórico
+        const previous = cachedStatus.find(c => c.id === host.id);
+        if (previous && previous.online && !isAlive) {
             logHistory(host.id);
         }
-        hostStatusMemory[host.id] = isAlive;
 
         results.push({
             id: host.id,
+            name: host.name,
+            ip: host.ip,
             online: isAlive,
-            time: time,
-            equipment: host.equipment,
-            ip: host.ip
+            latency: latency,
+            last_check: checkTime // Agora envia Data + Hora
         });
     }
-    
-    res.json(results);
+
+    cachedStatus = results;
+    console.log(`Ciclo concluído. Atualizado: ${checkTime}`);
+}
+
+// Inicia ciclo
+runPingCycle();
+setInterval(runPingCycle, PING_INTERVAL);
+
+
+// --- ROTAS ---
+app.get('/status-rede', (req, res) => {
+    // Retorna o cache para resposta instantânea
+    res.json(cachedStatus);
 });
 
-app.listen(3000, () => console.log('Servidor rodando na porta 3000'));
+app.get('/hosts', async (req, res) => {
+    const { data } = await supabase.from('hosts').select('*').order('name');
+    res.json(data || []);
+});
+
+app.post('/hosts', async (req, res) => {
+    await supabase.from('hosts').upsert(req.body, { onConflict: 'id' });
+    res.json({ success: true });
+    // runPingCycle(); // Opcional: forçar ping ao salvar
+});
+
+app.get('/history', async (req, res) => {
+    const { data } = await supabase.from('history').select('*').order('timestamp', { ascending: false }).limit(50);
+    res.json(data || []);
+});
+
+app.delete('/history', async (req, res) => {
+    await supabase.from('history').delete().gt('id', 0);
+    res.json({ success: true });
+});
+
+async function logHistory(sectorId) {
+    await supabase.from('history').insert([{
+        timestamp: new Date().toISOString(),
+        sector: sectorId,
+        duration: "Falha de Ping"
+    }]);
+}
+
+app.listen(3000, () => console.log('Servidor de Monitoramento Rodando!'));
