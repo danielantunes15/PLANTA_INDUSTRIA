@@ -21,7 +21,7 @@ const SETORES = [
     { id: "REFEITORIO", name: "Refeitório", pos: { x: 40, z: 32 }, size: [6, 3, 5] }
 ];
 
-// Ligações iniciais da rede
+// Ligações iniciais da rede (Definem quem alimenta quem)
 let activeLinks = [
     { from: "CPD", to: "REFEITORIO" },
     { from: "CPD", to: "OLD" },
@@ -33,16 +33,19 @@ let activeLinks = [
     { from: "BALANCA", to: "PORTARIA" }
 ];
 
+// Mapa para armazenar o status final (incluindo cascata)
+let finalSectorStatus = {}; 
+
 function init() {
     const container = document.getElementById('canvas-3d');
-    if (!container) return; // Segurança
+    if (!container) return;
 
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x111111);
     scene.fog = new THREE.FogExp2(0x111111, 0.002);
 
     camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 1000);
-    camera.position.set(0, 100, 60); // Posição original restaurada
+    camera.position.set(0, 100, 60);
 
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(container.clientWidth, container.clientHeight);
@@ -75,7 +78,7 @@ function init() {
     
     initEditor();
     
-    // Inicia Monitoramento
+    // Inicia Loop de Monitoramento
     checkNetworkStatus();
     setInterval(checkNetworkStatus, 1000); 
 
@@ -89,11 +92,9 @@ function init() {
 
 function createEnvironment() {
     const textureLoader = new THREE.TextureLoader();
-    // Tenta carregar imagem, se falhar cria chão branco
     textureLoader.load('./img/3.png', 
         function(texture) {
             const planeMat = new THREE.MeshStandardMaterial({ map: texture, roughness: 0.9, metalness: 0.0 });
-            // TAMANHO RESTAURADO PARA 120x120 (Alinha os prédios)
             const floor = new THREE.Mesh(new THREE.PlaneGeometry(120, 120), planeMat);
             floor.rotation.x = -Math.PI / 2;
             floor.position.y = -0.1; 
@@ -135,7 +136,6 @@ function renderStructures() {
         scene.add(mesh);
         interactables.push(mesh);
 
-        // Bordas
         const edges = new THREE.EdgesGeometry(new THREE.BoxGeometry(mesh.scale.x, mesh.scale.y, mesh.scale.z));
         const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x38bdf8 }));
         line.position.copy(mesh.position);
@@ -157,7 +157,6 @@ function renderStructures() {
         scene.add(ring);
         pulsingRings.push(ring); 
 
-        // Rótulo
         const labelDiv = document.createElement('div');
         labelDiv.className = 'label-tag';
         labelDiv.textContent = s.name;
@@ -166,17 +165,14 @@ function renderStructures() {
         mesh.add(label);
     });
 
-    // Tanques
     const tankGeo = new THREE.CylinderGeometry(2.5, 2.5, 3.5, 40);
     const tankMat = new THREE.MeshStandardMaterial({ color: 0x475569 });
-    // Lógica original de posição dos tanques
     for(let i=0; i<5; i++) {
         const t = i / 3;
         const posX = -21 + (-5 - -21) * t;
         const posZ = 6 + (24 - 6) * t;
         const tank = new THREE.Mesh(tankGeo, tankMat);
         tank.position.set(posX, 1.75, posZ);
-        
         const edges = new THREE.EdgesGeometry(tankGeo);
         const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x38bdf8 }));
         tank.add(line);
@@ -203,11 +199,11 @@ function drawCable(p1, p2, idFrom, idTo) {
     
     const midX = (p1.x + p2.x) / 2;
     const midZ = (p1.z + p2.z) / 2;
-    points.push(new THREE.Vector3(midX, 5, midZ)); // Altura do arco original
+    points.push(new THREE.Vector3(midX, 5, midZ)); 
     points.push(new THREE.Vector3(p2.x, 0.5, p2.z));
 
     const curve = new THREE.CatmullRomCurve3(points);
-    const geo = new THREE.TubeGeometry(curve, 20, 0.1, 8, false); // Raio 0.1 original
+    const geo = new THREE.TubeGeometry(curve, 20, 0.1, 8, false);
     const mat = new THREE.MeshBasicMaterial({ color: 0x0ea5e9 });
     
     const tube = new THREE.Mesh(geo, mat);
@@ -216,7 +212,6 @@ function drawCable(p1, p2, idFrom, idTo) {
     scene.add(tube);
     cables.push(tube);
     
-    // Pacote de dados
     const packetGeo = new THREE.BoxGeometry(0.4, 0.4, 0.4); 
     const packetMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
     const packet = new THREE.Mesh(packetGeo, packetMat);
@@ -225,7 +220,7 @@ function drawCable(p1, p2, idFrom, idTo) {
     cables.push(packet);
 }
 
-// === MONITORAMENTO ===
+// === LÓGICA DE MONITORAMENTO E EFEITO CASCATA ===
 async function checkNetworkStatus() {
     let serverData = [];
     try {
@@ -237,23 +232,75 @@ async function checkNetworkStatus() {
     networkData = serverData;
     let hasError = false;
 
-    // Estado local do simulador
-    const simState = window.SIMULATION_STATE || {};
+    // 1. MONTAR O GRAFO DE DEPENDÊNCIA (Quem alimenta quem)
+    const topology = {}; 
+    SETORES.forEach(s => topology[s.id] = []);
+    activeLinks.forEach(l => {
+        // Ex: Se CPD -> OLD, então topology[CPD] contém OLD
+        if(!topology[l.from]) topology[l.from] = [];
+        topology[l.from].push(l.to);
+    });
 
-    // 1. Prédios
+    // 2. DETERMINAR STATUS INTRÍNSECO (Status real individual ou simulado)
+    const simState = window.SIMULATION_STATE || {};
+    const statusMap = {}; 
+    // statusMap[id] = { isDown: boolean, reason: string }
+
+    SETORES.forEach(s => {
+        const net = serverData.find(d => d.id === s.id);
+        const isSimulated = simState[s.id] === true;
+        const isPingFail = net && !net.online;
+
+        if (isSimulated) {
+            statusMap[s.id] = { isDown: true, reason: 'Simulação' };
+        } else if (isPingFail) {
+            statusMap[s.id] = { isDown: true, reason: 'Falha de Rede' };
+        } else {
+            statusMap[s.id] = { isDown: false, reason: 'Online' };
+        }
+    });
+
+    // 3. APLICAR EFEITO CASCATA (Propagar falhas)
+    // Usamos uma fila (BFS) para percorrer a árvore de falhas
+    const queue = Object.keys(statusMap).filter(id => statusMap[id].isDown);
+    const visited = new Set(queue);
+
+    while(queue.length > 0) {
+        const parentId = queue.shift();
+        const children = topology[parentId] || [];
+
+        children.forEach(childId => {
+            // Se o filho estava Online, ele cai por causa do Pai
+            if (!statusMap[childId].isDown) {
+                statusMap[childId] = { isDown: true, reason: 'Sem Sinal (Cascata)' };
+                
+                // Adiciona na fila para derrubar os filhos dele também
+                if (!visited.has(childId)) {
+                    visited.add(childId);
+                    queue.push(childId);
+                }
+            }
+        });
+    }
+
+    // Salva globalmente para usar no click do mouse
+    finalSectorStatus = statusMap;
+
+    // 4. ATUALIZAR VISUAL 3D
     interactables.forEach(mesh => {
         if(mesh.userData.type === 'building') {
-            const status = serverData.find(d => d.id === mesh.userData.id);
+            const statusInfo = statusMap[mesh.userData.id] || { isDown: false };
             const ring = pulsingRings.find(r => r.userData.id === mesh.userData.id);
-            
-            const isOffline = (status && !status.online) || simState[mesh.userData.id] === true;
 
-            if (isOffline) {
+            if (statusInfo.isDown) {
+                // MODO ERRO: Vermelho
                 mesh.material.color.setHex(0xff0000); 
                 if(mesh.userData.lineObj) mesh.userData.lineObj.material.color.setHex(0xff0000);
                 if(ring) ring.visible = true;
                 hasError = true;
             } else {
+                // MODO ONLINE: Azul
+                // Só reseta a cor se NÃO for o objeto selecionado pelo mouse
                 if(INTERSECTED !== mesh) {
                     mesh.material.color.setHex(0x1e293b);
                 }
@@ -263,29 +310,25 @@ async function checkNetworkStatus() {
         }
     });
 
-    // 2. Cabos
+    // 5. ATUALIZAR CABOS
     cables.forEach(obj => {
         if(obj.userData.isCable) {
-            const fromId = obj.userData.from;
-            const toId = obj.userData.to;
-            const fromNode = serverData.find(d => d.id === fromId);
-            const toNode = serverData.find(d => d.id === toId);
-
-            const fromDown = (fromNode && !fromNode.online) || simState[fromId] === true;
-            const toDown = (toNode && !toNode.online) || simState[toId] === true;
+            // Se a origem OU o destino estiverem DOWN (Real, Simulado ou Cascata), o cabo fica vermelho
+            const fromStatus = statusMap[obj.userData.from];
+            const toStatus = statusMap[obj.userData.to];
+            
+            const fromDown = fromStatus && fromStatus.isDown;
+            const toDown = toStatus && toStatus.isDown;
 
             if (fromDown || toDown) {
                 obj.material.color.setHex(0xff0000); 
-                // REMOVIDO O SCALING para evitar "dupla linha" visual
-                // obj.scale.set(1.5, 1.5, 1.5); 
             } else {
                 obj.material.color.setHex(0x0ea5e9);
-                // obj.scale.set(1, 1, 1);
             }
         }
     });
 
-    // 3. Status UI
+    // 6. STATUS GLOBAL UI
     const statusDot = document.getElementById('status-dot');
     const globalText = document.getElementById('global-text');
     if(hasError) {
@@ -303,7 +346,7 @@ async function checkNetworkStatus() {
 function initEditor() {
     const s1 = document.getElementById('from-sector');
     const s2 = document.getElementById('to-sector');
-    if(s1 && s2) { // Proteção
+    if(s1 && s2) {
         s1.innerHTML = ''; s2.innerHTML = '';
         SETORES.forEach(s => {
             s1.add(new Option(s.name, s.id));
@@ -343,16 +386,18 @@ function onDocumentMouseDown(event) {
     if(INTERSECTED) {
         document.getElementById('sector-info').classList.remove('hidden');
         document.getElementById('sector-name').innerText = INTERSECTED.userData.name;
+        
         const net = networkData.find(n => n.id === INTERSECTED.userData.id);
         const msg = document.getElementById('sector-status-msg');
         
-        const simState = window.SIMULATION_STATE || {};
-        const isSimulated = simState[INTERSECTED.userData.id] === true;
+        // Pega o status calculado (com cascata)
+        const statusInfo = finalSectorStatus[INTERSECTED.userData.id] || { isDown: false, reason: 'Desconhecido' };
 
         if(net) {
             document.getElementById('sector-ip').innerText = "IP: " + net.ip;
-            if(isSimulated || !net.online) {
-                msg.innerHTML = "<b style='color:#fb7185'>OFFLINE (Falha/Simulação)</b>";
+            if(statusInfo.isDown) {
+                // Mostra o motivo exato (Cascata, Simulação ou Falha)
+                msg.innerHTML = `<b style='color:#fb7185'>OFFLINE (${statusInfo.reason})</b>`;
             } else {
                 msg.innerHTML = "<b style='color:#2dd4bf'>ONLINE</b>";
             }
@@ -407,26 +452,27 @@ function animate() {
     raycaster.setFromCamera(mouse, camera);
     const hits = raycaster.intersectObjects(interactables);
     
-    const simState = window.SIMULATION_STATE || {};
+    // Verifica status global para decidir a cor do hover
+    const statusMap = finalSectorStatus || {};
 
     if(hits.length>0) {
         if(INTERSECTED!=hits[0].object) {
             if(INTERSECTED && INTERSECTED.userData.type==='building') {
-                const isErr = simState[INTERSECTED.userData.id] === true || INTERSECTED.material.color.getHex() === 0xff0000;
+                const isErr = statusMap[INTERSECTED.userData.id]?.isDown;
                 if(!isErr) INTERSECTED.material.color.setHex(0x1e293b);
             }
             
             INTERSECTED = hits[0].object;
             
             if(INTERSECTED.userData.type==='building') {
-                const isErr = simState[INTERSECTED.userData.id] === true || INTERSECTED.material.color.getHex() === 0xff0000;
+                const isErr = statusMap[INTERSECTED.userData.id]?.isDown;
                 if(!isErr) INTERSECTED.material.color.setHex(0x38bdf8);
             }
             document.body.style.cursor = 'pointer';
         }
     } else {
         if(INTERSECTED && INTERSECTED.userData.type==='building') {
-            const isErr = simState[INTERSECTED.userData.id] === true || INTERSECTED.material.color.getHex() === 0xff0000;
+            const isErr = statusMap[INTERSECTED.userData.id]?.isDown;
             if(!isErr) INTERSECTED.material.color.setHex(0x1e293b);
         }
         INTERSECTED = null;
