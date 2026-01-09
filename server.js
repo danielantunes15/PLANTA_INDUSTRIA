@@ -9,7 +9,7 @@ app.use(cors());
 app.use(express.json());
 
 // --- CONFIGURAÇÃO ---
-const PING_INTERVAL = 5 * 60 * 1000; // 5 Minutos
+const PING_INTERVAL = 3 * 60 * 1000; // 5 Minutos
 
 // Configurações avançadas do Ping para evitar falsos negativos
 const PING_CONFIG = {

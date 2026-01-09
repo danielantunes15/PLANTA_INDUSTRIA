@@ -92,7 +92,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="editor-body">
                 <div style="margin-bottom:15px; padding:10px; border-radius:8px; background:rgba(15,23,42,0.5); border:1px solid rgba(255,255,255,0.05);">
                     <p style="font-size:11px; color:#94a3b8; margin:0;">
-                        <i class="fas fa-sync-alt fa-spin" style="margin-right:5px;"></i> Atualização automática a cada 5 minutos.
+                        <i class="fas fa-sync-alt fa-spin" style="margin-right:5px;"></i> Atualização automática a cada 3 minutos.
                     </p>
                 </div>
                 <div id="sim-list" class="links-container"></div>
