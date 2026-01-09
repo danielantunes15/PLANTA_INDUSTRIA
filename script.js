@@ -2,6 +2,7 @@ let scene, camera, renderer, labelRenderer, controls;
 let cables = [];
 let interactables = []; 
 let networkData = [];
+let pulsingRings = []; 
 
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
@@ -9,81 +10,60 @@ let INTERSECTED;
 
 // === 1. CONFIGURAÇÃO DOS SETORES ===
 const SETORES = [
-    // Entrada
     { id: "PORTARIA", name: "Portaria", pos: { x: 21, z: 55 }, size: [3, 3, 3] },
     { id: "BALANCA", name: "Balança", pos: { x: 9, z: 51 }, size: [4, 3, 4] },
-    
-    // Processos
     { id: "PCTS", name: "PCTS", pos: { x: 7, z: 41 }, size: [6, 4, 6] },
     { id: "COI", name: "COI", pos: { x: -9, z: -13 }, size: [5, 4, 5] },
     { id: "VINHACA", name: "Vinhaça", pos: { x: -23, z: -28 }, size: [2, 2, 2] },
-    
-    // Administrativo e Apoio
     { id: "SUPERVISAO", name: "Supervisão", pos: { x: 10, z: -21 }, size: [8, 4, 8] },
     { id: "OLD", name: "OLD", pos: { x: 36, z: 0 }, size: [3, 3, 10] },
     { id: "CPD", name: "CPD", pos: { x: 40, z: 22 }, type: 'L', size: [8, 6, 4] },
-    
-    // Novo Prédio
     { id: "REFEITORIO", name: "Refeitório", pos: { x: 40, z: 32 }, size: [6, 3, 5] }
 ];
 
-// === 2. CONEXÕES CORRIGIDAS ===
+// Ligações iniciais da rede
 let activeLinks = [
-    // Saídas do CPD
     { from: "CPD", to: "REFEITORIO" },
     { from: "CPD", to: "OLD" },
-    
-    // Distribuição do OLD
     { from: "OLD", to: "SUPERVISAO" },
     { from: "OLD", to: "COI" },
     { from: "OLD", to: "PCTS" },
-    
-    // Supervisão manda para Vinhaça (NOVO)
     { from: "SUPERVISAO", to: "VINHACA" },
-
-    // Caminho da Balança (Via PCTS agora)
-    { from: "PCTS", to: "BALANCA" },    // Corrigido: PCTS -> Balança
-    { from: "BALANCA", to: "PORTARIA" } // Balança -> Portaria
+    { from: "PCTS", to: "BALANCA" },
+    { from: "BALANCA", to: "PORTARIA" }
 ];
 
 function init() {
     const container = document.getElementById('canvas-3d');
+    if (!container) return; // Segurança
 
-    // Cena (Fundo limpo)
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x111111);
     scene.fog = new THREE.FogExp2(0x111111, 0.002);
 
-    // Câmera
     camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 1000);
-    camera.position.set(0, 100, 60);
+    camera.position.set(0, 100, 60); // Posição original restaurada
 
-    // Renderer Padrão (Sem Bloom para evitar visual embaçado/estranho)
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.shadowMap.enabled = true;
     container.appendChild(renderer.domElement);
 
-    // Renderer de Rótulos (CSS2D)
     labelRenderer = new THREE.CSS2DRenderer();
     labelRenderer.setSize(container.clientWidth, container.clientHeight);
     labelRenderer.domElement.style.position = 'absolute';
     labelRenderer.domElement.style.top = '0px';
-    // IMPORTANTE: Permite que o mouse atravesse o texto para clicar nos prédios
     labelRenderer.domElement.style.pointerEvents = 'none'; 
     container.appendChild(labelRenderer.domElement);
 
-    // Controles
     controls = new THREE.OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
     controls.maxPolarAngle = Math.PI / 2 - 0.1;
 
-    // Luzes
     const ambient = new THREE.AmbientLight(0xffffff, 0.8);
     scene.add(ambient);
-
     const sun = new THREE.DirectionalLight(0xffffff, 0.5);
     sun.position.set(50, 100, 50);
     sun.castShadow = true;
@@ -94,8 +74,10 @@ function init() {
     renderCables();
     
     initEditor();
+    
+    // Inicia Monitoramento
     checkNetworkStatus();
-    setInterval(checkNetworkStatus, 5000);
+    setInterval(checkNetworkStatus, 1000); 
 
     window.addEventListener('resize', onWindowResize);
     document.addEventListener('mousemove', onDocumentMouseMove, false);
@@ -107,33 +89,39 @@ function init() {
 
 function createEnvironment() {
     const textureLoader = new THREE.TextureLoader();
-    const floorTexture = textureLoader.load('./img/3.png');
-    
-    const planeMat = new THREE.MeshStandardMaterial({ 
-        map: floorTexture, 
-        color: 0xffffff, 
-        roughness: 0.9, 
-        metalness: 0.0 
-    });
-
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(120, 120), planeMat);
-    floor.rotation.x = -Math.PI / 2;
-    floor.position.y = -0.1; 
-    floor.receiveShadow = true;
-    scene.add(floor);
+    // Tenta carregar imagem, se falhar cria chão branco
+    textureLoader.load('./img/3.png', 
+        function(texture) {
+            const planeMat = new THREE.MeshStandardMaterial({ map: texture, roughness: 0.9, metalness: 0.0 });
+            // TAMANHO RESTAURADO PARA 120x120 (Alinha os prédios)
+            const floor = new THREE.Mesh(new THREE.PlaneGeometry(120, 120), planeMat);
+            floor.rotation.x = -Math.PI / 2;
+            floor.position.y = -0.1; 
+            floor.receiveShadow = true;
+            scene.add(floor);
+        },
+        undefined,
+        function(err) {
+            const planeMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
+            const floor = new THREE.Mesh(new THREE.PlaneGeometry(120, 120), planeMat);
+            floor.rotation.x = -Math.PI / 2;
+            floor.position.y = -0.1;
+            scene.add(floor);
+        }
+    );
 }
 
 function renderStructures() {
     const geoNormal = new THREE.BoxGeometry(1, 1, 1);
-    
+    const ringGeo = new THREE.RingGeometry(2.5, 3.5, 32); 
+
     SETORES.forEach(s => {
-        // Material Sólido e Tecnológico (Fim do visual fantasma)
         const mat = new THREE.MeshPhysicalMaterial({ 
-            color: 0x1e293b,     
+            color: 0x1e293b, 
             transparent: true, 
-            opacity: 0.7,        
-            roughness: 0.2,
-            metalness: 0.6,
+            opacity: 0.7, 
+            roughness: 0.2, 
+            metalness: 0.6, 
             clearcoat: 1.0
         });
 
@@ -147,39 +135,51 @@ function renderStructures() {
         scene.add(mesh);
         interactables.push(mesh);
 
-        // Bordas Finas (Wireframe Azul)
+        // Bordas
         const edges = new THREE.EdgesGeometry(new THREE.BoxGeometry(mesh.scale.x, mesh.scale.y, mesh.scale.z));
         const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x38bdf8 }));
         line.position.copy(mesh.position);
         scene.add(line);
+        mesh.userData.lineObj = line; 
+
+        // Anel Pulsante
+        const ringMat = new THREE.MeshBasicMaterial({ 
+            color: 0xff0000, 
+            transparent: true, 
+            opacity: 0, 
+            side: THREE.DoubleSide 
+        });
+        const ring = new THREE.Mesh(ringGeo, ringMat);
+        ring.rotation.x = -Math.PI / 2;
+        ring.position.set(s.pos.x, 0.2, s.pos.z);
+        ring.visible = false;
+        ring.userData = { id: s.id }; 
+        scene.add(ring);
+        pulsingRings.push(ring); 
 
         // Rótulo
         const labelDiv = document.createElement('div');
         labelDiv.className = 'label-tag';
         labelDiv.textContent = s.name;
-        
         const label = new THREE.CSS2DObject(labelDiv);
         label.position.set(0, (mesh.scale.y/2) + 1.5, 0);
         mesh.add(label);
     });
 
     // Tanques
-    const tankStart = { x: -21 , z: 6 };
-    const tankEnd = { x: -5, z: 24};
     const tankGeo = new THREE.CylinderGeometry(2.5, 2.5, 3.5, 40);
-    const tankMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.4, metalness: 0.8 });
-
+    const tankMat = new THREE.MeshStandardMaterial({ color: 0x475569 });
+    // Lógica original de posição dos tanques
     for(let i=0; i<5; i++) {
         const t = i / 3;
-        const posX = tankStart.x + (tankEnd.x - tankStart.x) * t;
-        const posZ = tankStart.z + (tankEnd.z - tankStart.z) * t;
+        const posX = -21 + (-5 - -21) * t;
+        const posZ = 6 + (24 - 6) * t;
         const tank = new THREE.Mesh(tankGeo, tankMat);
         tank.position.set(posX, 1.75, posZ);
         
         const edges = new THREE.EdgesGeometry(tankGeo);
         const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x38bdf8 }));
         tank.add(line);
-
         scene.add(tank);
     }
 }
@@ -191,7 +191,6 @@ function renderCables() {
     activeLinks.forEach(link => {
         const s1 = SETORES.find(s => s.id === link.from);
         const s2 = SETORES.find(s => s.id === link.to);
-        
         if (s1 && s2) {
             drawCable(s1.pos, s2.pos, link.from, link.to);
         }
@@ -202,15 +201,13 @@ function drawCable(p1, p2, idFrom, idTo) {
     const points = [];
     points.push(new THREE.Vector3(p1.x, 0.5, p1.z));
     
-    // Arco do cabo
     const midX = (p1.x + p2.x) / 2;
     const midZ = (p1.z + p2.z) / 2;
-    points.push(new THREE.Vector3(midX, 5, midZ)); 
+    points.push(new THREE.Vector3(midX, 5, midZ)); // Altura do arco original
     points.push(new THREE.Vector3(p2.x, 0.5, p2.z));
 
     const curve = new THREE.CatmullRomCurve3(points);
-    // Tubo Sólido
-    const geo = new THREE.TubeGeometry(curve, 20, 0.1, 8, false);
+    const geo = new THREE.TubeGeometry(curve, 20, 0.1, 8, false); // Raio 0.1 original
     const mat = new THREE.MeshBasicMaterial({ color: 0x0ea5e9 });
     
     const tube = new THREE.Mesh(geo, mat);
@@ -219,93 +216,122 @@ function drawCable(p1, p2, idFrom, idTo) {
     scene.add(tube);
     cables.push(tube);
     
-    // Pacote de dados (Cubo viajante)
+    // Pacote de dados
     const packetGeo = new THREE.BoxGeometry(0.4, 0.4, 0.4); 
     const packetMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
     const packet = new THREE.Mesh(packetGeo, packetMat);
     scene.add(packet);
-    
     packet.userData = { curve: curve, progress: 0, speed: 0.004 }; 
     cables.push(packet);
 }
 
-// === MONITORAMENTO (PING) ===
+// === MONITORAMENTO ===
 async function checkNetworkStatus() {
+    let serverData = [];
     try {
         const response = await fetch('http://localhost:3000/status-rede');
-        const data = await response.json();
-        networkData = data;
-        
+        serverData = await response.json();
         document.getElementById('last-update').innerText = "Atualizado: " + new Date().toLocaleTimeString();
-        let hasError = false;
+    } catch (error) { serverData = []; }
+    
+    networkData = serverData;
+    let hasError = false;
 
-        cables.forEach(obj => {
-            if(obj.userData.isCable) {
-                const fromNode = data.find(d => d.id === obj.userData.from);
-                const toNode = data.find(d => d.id === obj.userData.to);
-                
-                const isFromDown = fromNode && !fromNode.online;
-                const isToDown = toNode && !toNode.online;
+    // Estado local do simulador
+    const simState = window.SIMULATION_STATE || {};
 
-                if (isFromDown || isToDown) {
-                    obj.material.color.setHex(0xff0000); // Vermelho
-                    obj.scale.set(1.5, 1.5, 1.5);
-                    hasError = true;
-                } else {
-                    obj.material.color.setHex(0x0ea5e9); // Azul
-                    obj.scale.set(1, 1, 1);
+    // 1. Prédios
+    interactables.forEach(mesh => {
+        if(mesh.userData.type === 'building') {
+            const status = serverData.find(d => d.id === mesh.userData.id);
+            const ring = pulsingRings.find(r => r.userData.id === mesh.userData.id);
+            
+            const isOffline = (status && !status.online) || simState[mesh.userData.id] === true;
+
+            if (isOffline) {
+                mesh.material.color.setHex(0xff0000); 
+                if(mesh.userData.lineObj) mesh.userData.lineObj.material.color.setHex(0xff0000);
+                if(ring) ring.visible = true;
+                hasError = true;
+            } else {
+                if(INTERSECTED !== mesh) {
+                    mesh.material.color.setHex(0x1e293b);
                 }
+                if(mesh.userData.lineObj) mesh.userData.lineObj.material.color.setHex(0x38bdf8);
+                if(ring) ring.visible = false;
             }
-        });
-
-        const statusDot = document.getElementById('status-dot');
-        const globalText = document.getElementById('global-text');
-        
-        if(hasError) {
-            statusDot.className = "dot danger";
-            globalText.innerText = "ALERTA CRÍTICO";
-            globalText.style.color = "#fb7185";
-        } else {
-            statusDot.className = "dot active";
-            globalText.innerText = "OPERACIONAL";
-            globalText.style.color = "#2dd4bf";
         }
+    });
 
-    } catch (error) {
-        console.warn("Backend offline");
+    // 2. Cabos
+    cables.forEach(obj => {
+        if(obj.userData.isCable) {
+            const fromId = obj.userData.from;
+            const toId = obj.userData.to;
+            const fromNode = serverData.find(d => d.id === fromId);
+            const toNode = serverData.find(d => d.id === toId);
+
+            const fromDown = (fromNode && !fromNode.online) || simState[fromId] === true;
+            const toDown = (toNode && !toNode.online) || simState[toId] === true;
+
+            if (fromDown || toDown) {
+                obj.material.color.setHex(0xff0000); 
+                // REMOVIDO O SCALING para evitar "dupla linha" visual
+                // obj.scale.set(1.5, 1.5, 1.5); 
+            } else {
+                obj.material.color.setHex(0x0ea5e9);
+                // obj.scale.set(1, 1, 1);
+            }
+        }
+    });
+
+    // 3. Status UI
+    const statusDot = document.getElementById('status-dot');
+    const globalText = document.getElementById('global-text');
+    if(hasError) {
+        statusDot.className = "dot danger";
+        globalText.innerText = "ALERTA CRÍTICO";
+        globalText.style.color = "#fb7185";
+    } else {
+        statusDot.className = "dot active";
+        globalText.innerText = "OPERACIONAL";
+        globalText.style.color = "#2dd4bf";
     }
 }
 
-// === INTERFACE ===
+// === EDITOR & INTERFACE ===
 function initEditor() {
     const s1 = document.getElementById('from-sector');
     const s2 = document.getElementById('to-sector');
-    s1.innerHTML = ''; s2.innerHTML = '';
-    
-    SETORES.forEach(s => {
-        s1.add(new Option(s.name, s.id));
-        s2.add(new Option(s.name, s.id));
-    });
-    renderLinksList();
+    if(s1 && s2) { // Proteção
+        s1.innerHTML = ''; s2.innerHTML = '';
+        SETORES.forEach(s => {
+            s1.add(new Option(s.name, s.id));
+            s2.add(new Option(s.name, s.id));
+        });
+        renderLinksList();
+    }
 }
 
-function toggleEditor() { document.getElementById('network-editor').classList.toggle('open'); }
+function toggleEditor() { 
+    document.querySelectorAll('.editor-sidebar').forEach(el => el.classList.remove('open'));
+    document.getElementById('network-editor').classList.toggle('open'); 
+}
 
 function addLink() {
     const from = document.getElementById('from-sector').value;
     const to = document.getElementById('to-sector').value;
     if(from === to) return alert("Origem e Destino iguais");
-    
     if(!activeLinks.some(l => (l.from===from && l.to===to) || (l.from===to && l.to===from))){
         activeLinks.push({from, to});
         renderLinksList(); renderCables();
     }
 }
-
 function removeLink(i) { activeLinks.splice(i,1); renderLinksList(); renderCables(); }
-
 function renderLinksList() {
-    const l = document.getElementById('links-list'); l.innerHTML = '';
+    const l = document.getElementById('links-list'); 
+    if(!l) return;
+    l.innerHTML = '';
     activeLinks.forEach((x,i) => {
         const n1 = SETORES.find(s=>s.id===x.from)?.name || x.from;
         const n2 = SETORES.find(s=>s.id===x.to)?.name || x.to;
@@ -317,13 +343,19 @@ function onDocumentMouseDown(event) {
     if(INTERSECTED) {
         document.getElementById('sector-info').classList.remove('hidden');
         document.getElementById('sector-name').innerText = INTERSECTED.userData.name;
-        
         const net = networkData.find(n => n.id === INTERSECTED.userData.id);
         const msg = document.getElementById('sector-status-msg');
         
+        const simState = window.SIMULATION_STATE || {};
+        const isSimulated = simState[INTERSECTED.userData.id] === true;
+
         if(net) {
             document.getElementById('sector-ip').innerText = "IP: " + net.ip;
-            msg.innerHTML = net.online ? "<b style='color:#0f0'>ONLINE</b>" : "<b style='color:#f00'>OFFLINE</b>";
+            if(isSimulated || !net.online) {
+                msg.innerHTML = "<b style='color:#fb7185'>OFFLINE (Falha/Simulação)</b>";
+            } else {
+                msg.innerHTML = "<b style='color:#2dd4bf'>ONLINE</b>";
+            }
         } else {
             document.getElementById('sector-ip').innerText = "Sem monitoramento";
             msg.innerText = "";
@@ -332,16 +364,19 @@ function onDocumentMouseDown(event) {
 }
 
 function setupSearch() {
-    document.getElementById('searchInput').addEventListener('keydown', (e) => {
-        if(e.key==='Enter'){
-            const v = e.target.value.toUpperCase();
-            const t = SETORES.find(s=>s.id===v || s.name.toUpperCase().includes(v));
-            if(t) {
-                gsap.to(controls.target, {duration:1, x:t.pos.x, y:0, z:t.pos.z});
-                gsap.to(camera.position, {duration:1, x:t.pos.x, y:30, z:t.pos.z+30});
+    const searchInput = document.getElementById('searchInput');
+    if(searchInput) {
+        searchInput.addEventListener('keydown', (e) => {
+            if(e.key==='Enter'){
+                const v = e.target.value.toUpperCase();
+                const t = SETORES.find(s=>s.id===v || s.name.toUpperCase().includes(v));
+                if(t) {
+                    gsap.to(controls.target, {duration:1, x:t.pos.x, y:0, z:t.pos.z});
+                    gsap.to(camera.position, {duration:1, x:t.pos.x, y:30, z:t.pos.z+30});
+                }
             }
-        }
-    });
+        });
+    }
 }
 
 function onDocumentMouseMove(e) {
@@ -349,7 +384,6 @@ function onDocumentMouseMove(e) {
     mouse.x = ((e.clientX - r.left)/r.width)*2-1;
     mouse.y = -((e.clientY - r.top)/r.height)*2+1;
 }
-
 function onWindowResize() {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
@@ -360,18 +394,41 @@ function onWindowResize() {
 function animate() {
     requestAnimationFrame(animate);
 
+    const time = Date.now() * 0.003; 
+
+    pulsingRings.forEach(ring => {
+        if(ring.visible) {
+            const scale = 1 + (Math.sin(time) * 0.3 + 0.3);
+            ring.scale.set(scale, scale, 1);
+            ring.material.opacity = 0.8 - (Math.sin(time) * 0.4 + 0.4);
+        }
+    });
+
     raycaster.setFromCamera(mouse, camera);
     const hits = raycaster.intersectObjects(interactables);
     
+    const simState = window.SIMULATION_STATE || {};
+
     if(hits.length>0) {
         if(INTERSECTED!=hits[0].object) {
-            if(INTERSECTED && INTERSECTED.userData.type==='building') INTERSECTED.material.color.setHex(0x1e293b);
+            if(INTERSECTED && INTERSECTED.userData.type==='building') {
+                const isErr = simState[INTERSECTED.userData.id] === true || INTERSECTED.material.color.getHex() === 0xff0000;
+                if(!isErr) INTERSECTED.material.color.setHex(0x1e293b);
+            }
+            
             INTERSECTED = hits[0].object;
-            if(INTERSECTED.userData.type==='building') INTERSECTED.material.color.setHex(0x38bdf8);
+            
+            if(INTERSECTED.userData.type==='building') {
+                const isErr = simState[INTERSECTED.userData.id] === true || INTERSECTED.material.color.getHex() === 0xff0000;
+                if(!isErr) INTERSECTED.material.color.setHex(0x38bdf8);
+            }
             document.body.style.cursor = 'pointer';
         }
     } else {
-        if(INTERSECTED && INTERSECTED.userData.type==='building') INTERSECTED.material.color.setHex(0x1e293b);
+        if(INTERSECTED && INTERSECTED.userData.type==='building') {
+            const isErr = simState[INTERSECTED.userData.id] === true || INTERSECTED.material.color.getHex() === 0xff0000;
+            if(!isErr) INTERSECTED.material.color.setHex(0x1e293b);
+        }
         INTERSECTED = null;
         document.body.style.cursor = 'default';
     }

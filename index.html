@@ -21,14 +21,11 @@
     <script src="https://unpkg.com/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
 
     <style>
-        /* CSS EXTRA PARA O MENU FUNCIONAR PERFEITAMENTE */
+        /* Ajustes finos para garantir que os painéis injetados fiquem corretos */
         .editor-sidebar.wide { width: 750px !important; right: -780px; }
         .editor-sidebar.wide.open { right: 0; }
-
-        .server-table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 13px; }
-        .server-table th { text-align: left; padding: 12px; color: #94a3b8; border-bottom: 1px solid #334155; font-weight: 800; text-transform: uppercase; font-size: 11px; }
-        .server-table td { padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.05); vertical-align: middle; }
         
+        /* Estilos específicos para inputs de tabela */
         .table-input { 
             background: rgba(15, 23, 42, 0.6); 
             border: 1px solid #334155; 
@@ -41,6 +38,7 @@
         }
         .table-input:focus { border-color: #2dd4bf; outline: none; background: rgba(0,0,0,0.8); }
 
+        /* Estilo dos botões do menu lateral */
         .btn-menu-server {
             width: 100%; display: flex; align-items: center; gap: 10px; 
             background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); 
@@ -49,6 +47,7 @@
         }
         .btn-menu-server:hover { background: rgba(45, 212, 191, 0.1); border-color: #2dd4bf; color: #2dd4bf; }
         
+        /* Scrollbar customizada para os painéis */
         .editor-body::-webkit-scrollbar { width: 6px; }
         .editor-body::-webkit-scrollbar-track { background: #0f172a; }
         .editor-body::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
@@ -83,8 +82,17 @@
 
             <div class="menu-section" style="margin-bottom: 20px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 20px;">
                 <label style="font-size:11px; color:#94a3b8; font-weight:700; text-transform:uppercase;">Administração</label>
+                
                 <button onclick="toggleServerPanel()" class="btn-menu-server">
                     <i class="fas fa-server"></i> SERVIDORES E IPs
+                </button>
+
+                <button onclick="toggleHistoryPanel()" class="btn-menu-server">
+                    <i class="fas fa-history"></i> HISTÓRICO DE QUEDAS
+                </button>
+                
+                <button onclick="toggleSimPanel()" class="btn-menu-server">
+                    <i class="fas fa-bolt"></i> SIMULAR FALHAS
                 </button>
             </div>
 
@@ -92,12 +100,12 @@
                 <h3><i class="fas fa-info-circle"></i> Detalhes do Ponto</h3>
                 <p id="sector-name">...</p>
                 <small id="sector-ip" style="color:#2dd4bf">IP: ...</small>
-                <div style="margin-top:10px; font-size:11px; color:#ccc" id="sector-status-msg"></div>
+                <div style="margin-top:10px; font-size:11px;" id="sector-status-msg"></div>
             </div>
 
             <div class="sidebar-footer">
                 <p>Sistema Integrado</p>
-                <small>v5.1 - Final Build</small>
+                <small>v6.0 - Final Build</small>
             </div>
         </aside>
 
@@ -139,131 +147,12 @@
             </div>
         </div>
 
-        <div id="server-panel" class="editor-sidebar wide">
-            <div class="editor-header" style="background: rgba(45, 212, 191, 0.05);">
-                <h3 style="color: #2dd4bf;"><i class="fas fa-server"></i> Configurar Servidores</h3>
-                <button class="close-btn" onclick="toggleServerPanel()"><i class="fas fa-times"></i></button>
-            </div>
-            <div class="editor-body">
-                <p style="font-size:12px; color:#94a3b8; margin-bottom: 20px;">
-                    Dados baseados na imagem da planta. Edite conforme necessário.
-                </p>
-                
-                <div class="table-container">
-                    <table class="server-table">
-                        <thead>
-                            <tr>
-                                <th style="width: 15%">SETOR</th>
-                                <th style="width: 55%">EQUIPAMENTO</th>
-                                <th style="width: 30%">IP</th>
-                            </tr>
-                        </thead>
-                        <tbody id="server-tbody">
-                            </tbody>
-                    </table>
-                </div>
-
-                <div style="margin-top: 30px; display: flex; gap: 10px;">
-                    <button onclick="saveHostsData()" class="btn-resolve" style="background:#2dd4bf; color: #0f172a;">
-                        <i class="fas fa-save"></i> SALVAR DADOS
-                    </button>
-                    <button onclick="toggleServerPanel()" class="btn-resolve" style="background: transparent; border: 1px solid #475569; color: #cbd5e1;">
-                        CANCELAR
-                    </button>
-                </div>
-            </div>
         </div>
-
-    </div>
     
-    <script src="script.js"></script>
-    
-    <script>
-        // --- DADOS PADRÃO DA SUA IMAGEM (Backup caso o servidor falhe) ---
-        const DEFAULT_HOSTS = [
-            { id: 'REFEITORIO', name: 'Refeitório', equipment: '01 Switch Mikrotik - SW1 - Refeitório', ip: '192.168.39.1' },
-            { id: 'CPD', name: 'CPD', equipment: '01 Switch Mikrotik - SW1 Administrativo', ip: '192.168.36.53' },
-            { id: 'OLD', name: 'OLD', equipment: '01 Switch Mikrotik CSS326-24G-2S+RM', ip: '192.168.36.60' },
-            { id: 'SUPERVISAO', name: 'Supervisão', equipment: '01 Switch Baseline 3com 2928-PWR OFICINA', ip: '192.168.36.14' },
-            { id: 'COI', name: 'COI', equipment: '01 Switch Baseline 3com 2928-PWR COI', ip: '192.168.36.15' },
-            { id: 'PCTS', name: 'PCTS', equipment: '01 Switch Baseline 3com 2928-PWR PCTS', ip: '192.168.36.17' },
-            { id: 'BALANCA', name: 'Balança', equipment: '01 Switch Baseline 3com 2928-PWR BALANÇA', ip: '192.168.36.18' }
-        ];
-
-        const SERVER_API_URL = 'http://localhost:3000';
-        let currentHostsData = [];
-
-        function toggleServerPanel() {
-            const panel = document.getElementById('server-panel');
-            panel.classList.toggle('open');
-            if (panel.classList.contains('open')) {
-                loadHostsData();
-            }
-        }
-
-        // Tenta carregar do servidor, se falhar ou vier vazio, usa o PADRÃO da imagem
-        async function loadHostsData() {
-            try {
-                const res = await fetch(`${SERVER_API_URL}/hosts`);
-                const data = await res.json();
-                
-                if (Array.isArray(data) && data.length > 0) {
-                    currentHostsData = data;
-                } else {
-                    console.log("Servidor retornou lista vazia. Usando padrão.");
-                    currentHostsData = DEFAULT_HOSTS;
-                }
-            } catch (error) {
-                console.warn("Backend offline. Usando dados padrão da imagem.");
-                currentHostsData = DEFAULT_HOSTS;
-            }
-            renderServerTable();
-        }
-
-        function renderServerTable() {
-            const tbody = document.getElementById('server-tbody');
-            tbody.innerHTML = '';
-
-            currentHostsData.forEach((host, index) => {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td style="font-weight:700; color:#e2e8f0; font-size:12px;">${host.id}</td>
-                    <td>
-                        <input type="text" class="table-input" id="equip-${index}" value="${host.equipment || ''}" placeholder="Nome do Switch...">
-                    </td>
-                    <td>
-                        <input type="text" class="table-input" id="ip-${index}" value="${host.ip || ''}" placeholder="192.168.X.X">
-                    </td>
-                `;
-                tbody.appendChild(tr);
-            });
-        }
-
-        async function saveHostsData() {
-            currentHostsData.forEach((host, index) => {
-                const equipInput = document.getElementById(`equip-${index}`);
-                const ipInput = document.getElementById(`ip-${index}`);
-                if (equipInput) host.equipment = equipInput.value;
-                if (ipInput) host.ip = ipInput.value;
-            });
-
-            try {
-                const res = await fetch(`${SERVER_API_URL}/hosts`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(currentHostsData)
-                });
-                
-                if (res.ok) {
-                    alert("Dados salvos e atualizados!");
-                    toggleServerPanel();
-                } else {
-                    alert("Erro ao salvar.");
-                }
-            } catch (error) {
-                alert("Modo Simulação: Dados salvos temporariamente (Backend Offline).");
-                toggleServerPanel();
-            }
+    <script src="script.js"></script>            <script src="server_manager.js"></script>    <script src="history_manager.js"></script>   <script src="simulation_manager.js"></script> <script>
+        // Função auxiliar para o menu mobile (caso necessário)
+        function toggleSidebar() {
+            document.getElementById('sidebar').classList.toggle('mobile-open');
         }
     </script>
 </body>
