@@ -21,11 +21,10 @@
     <script src="https://unpkg.com/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
 
     <style>
-        /* Ajustes finos para garantir que os painéis injetados fiquem corretos */
+        /* Ajustes específicos para inputs e painéis */
         .editor-sidebar.wide { width: 750px !important; right: -780px; }
         .editor-sidebar.wide.open { right: 0; }
         
-        /* Estilos específicos para inputs de tabela */
         .table-input { 
             background: rgba(15, 23, 42, 0.6); 
             border: 1px solid #334155; 
@@ -38,7 +37,6 @@
         }
         .table-input:focus { border-color: #2dd4bf; outline: none; background: rgba(0,0,0,0.8); }
 
-        /* Estilo dos botões do menu lateral */
         .btn-menu-server {
             width: 100%; display: flex; align-items: center; gap: 10px; 
             background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); 
@@ -47,7 +45,6 @@
         }
         .btn-menu-server:hover { background: rgba(45, 212, 191, 0.1); border-color: #2dd4bf; color: #2dd4bf; }
         
-        /* Scrollbar customizada para os painéis */
         .editor-body::-webkit-scrollbar { width: 6px; }
         .editor-body::-webkit-scrollbar-track { background: #0f172a; }
         .editor-body::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
@@ -109,7 +106,7 @@
 
             <div class="sidebar-footer">
                 <p>Sistema Integrado</p>
-                <small>v6.2 - Live Ping</small>
+                <small>v6.3 - Live Ping</small>
             </div>
         </aside>
 
@@ -135,19 +132,34 @@
         </main>
 
         <div id="network-editor" class="editor-sidebar">
-            <div class="editor-header">
-                <h3><i class="fas fa-project-diagram"></i> Editor de Rede</h3>
+            <div class="editor-header" style="background: rgba(45, 212, 191, 0.05); border-bottom: 1px solid rgba(45, 212, 191, 0.1);">
+                <h3 style="color: #2dd4bf;"><i class="fas fa-bezier-curve"></i> Topologia de Rede</h3>
                 <button class="close-btn" onclick="toggleEditor()"><i class="fas fa-times"></i></button>
             </div>
+            
             <div class="editor-body">
-                <label>Origem:</label>
-                <select id="from-sector" class="dark-input"></select>
-                <div style="text-align:center; color:#2dd4bf; margin: 5px 0;">⬇</div>
-                <label>Destino:</label>
-                <select id="to-sector" class="dark-input"></select>
-                <button onclick="addLink()" class="btn-resolve" style="background:#2dd4bf; margin-top:15px">CRIAR CONEXÃO</button>
-                <hr style="border-color:rgba(255,255,255,0.1); margin: 20px 0;">
-                <div id="links-list" class="links-container"></div>
+                <div style="background: rgba(255,255,255,0.02); padding: 20px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05);">
+                    <label style="color:#94a3b8; font-size:11px; font-weight:700; display:block; margin-bottom:5px;">ORIGEM</label>
+                    <select id="from-sector" class="modern-select"></select>
+
+                    <div style="text-align:center; color:#2dd4bf; margin: 10px 0;">
+                        <i class="fas fa-arrow-down"></i>
+                    </div>
+
+                    <label style="color:#94a3b8; font-size:11px; font-weight:700; display:block; margin-bottom:5px;">DESTINO</label>
+                    <select id="to-sector" class="modern-select"></select>
+
+                    <button onclick="addLink()" class="btn-resolve" style="background:#2dd4bf; color:#0f172a; margin-top:15px; width:100%; display:flex; justify-content:center; gap:10px;">
+                        <i class="fas fa-plus-circle"></i> CRIAR CONEXÃO
+                    </button>
+                </div>
+
+                <div style="margin-top: 25px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px;">
+                    <h4 style="color:#cbd5e1; font-size:12px; text-transform:uppercase; letter-spacing:1px; margin-bottom:15px;">
+                        Conexões Ativas (<span id="link-count">0</span>)
+                    </h4>
+                    <div id="links-list" class="links-container"></div>
+                </div>
             </div>
         </div>
 

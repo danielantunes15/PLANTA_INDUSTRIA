@@ -12,7 +12,7 @@ let INTERSECTED;
 const SETORES = [
     { id: "PORTARIA", name: "Portaria", pos: { x: 21, z: 55 }, size: [3, 3, 3] },
     { id: "BALANCA", name: "Balança", pos: { x: 9, z: 51 }, size: [4, 3, 4] },
-    { id: "PCTS", name: "PCTS", pos: { x: 7, z: 37 }, size: [3, 3, 3] },
+    { id: "PCTS", name: "PCTS", pos: { x: 7, z: 41 }, size: [6, 4, 6] },
     { id: "COI", name: "COI", pos: { x: -9, z: -13 }, size: [5, 4, 5] },
     { id: "VINHACA", name: "Vinhaça", pos: { x: -23, z: -28 }, size: [2, 2, 2] },
     { id: "SUPERVISAO", name: "Supervisão", pos: { x: 10, z: -21 }, size: [8, 4, 8] },
@@ -33,7 +33,6 @@ let activeLinks = [
     { from: "BALANCA", to: "PORTARIA" }
 ];
 
-// Variável global para armazenar o status
 let finalSectorStatus = {}; 
 
 function init() {
@@ -78,11 +77,10 @@ function init() {
     sun.castShadow = true;
     scene.add(sun);
 
-    // Inicialização
+    // Inicialização do Ambiente 3D
     createEnvironment();
     renderStructures();
     renderCables();
-    initEditor();
     
     // Inicia Monitoramento
     checkNetworkStatus();
@@ -232,7 +230,7 @@ function drawCable(p1, p2, idFrom, idTo) {
     cables.push(packet);
 }
 
-// === MONITORAMENTO INTELIGENTE (ATUALIZADO) ===
+// === MONITORAMENTO INTELIGENTE ===
 async function checkNetworkStatus() {
     let serverData = [];
     try {
@@ -272,7 +270,6 @@ async function checkNetworkStatus() {
                 if(ring) ring.visible = true;
             } else {
                 // COR NORMAL (Azul Escuro / Neon)
-                // Se não estiver com mouse em cima, volta ao normal
                 if(INTERSECTED !== mesh) mesh.material.color.setHex(0x1e293b);
                 if(mesh.userData.lineObj) mesh.userData.lineObj.material.color.setHex(0x38bdf8);
                 if(ring) ring.visible = false;
@@ -310,7 +307,7 @@ async function checkNetworkStatus() {
     }
 }
 
-// === INTERFACE DO EDITOR DE REDE ===
+// === INTERFACE DO EDITOR DE REDE (CORRIGIDO) ===
 function initEditor() {
     const s1 = document.getElementById('from-sector');
     const s2 = document.getElementById('to-sector');
@@ -325,8 +322,17 @@ function initEditor() {
 }
 
 function toggleEditor() { 
+    const panel = document.getElementById('network-editor');
+    const wasOpen = panel.classList.contains('open'); 
+
+    // Fecha TODOS os painéis laterais primeiro
     document.querySelectorAll('.editor-sidebar').forEach(el => el.classList.remove('open'));
-    document.getElementById('network-editor').classList.toggle('open'); 
+
+    // Se não estava aberto, abre agora
+    if (!wasOpen) {
+        panel.classList.add('open'); 
+        initEditor(); 
+    }
 }
 
 function addLink() {
@@ -339,14 +345,37 @@ function addLink() {
     }
 }
 function removeLink(i) { activeLinks.splice(i,1); renderLinksList(); renderCables(); }
+
 function renderLinksList() {
     const l = document.getElementById('links-list'); 
+    const countSpan = document.getElementById('link-count');
     if(!l) return;
+    
     l.innerHTML = '';
+    if(countSpan) countSpan.innerText = activeLinks.length;
+
+    if(activeLinks.length === 0) {
+        l.innerHTML = '<div style="text-align:center; color:#64748b; padding:20px; font-size:12px;">Nenhuma conexão criada.</div>';
+        return;
+    }
+
     activeLinks.forEach((x,i) => {
         const n1 = SETORES.find(s=>s.id===x.from)?.name || x.from;
         const n2 = SETORES.find(s=>s.id===x.to)?.name || x.to;
-        l.innerHTML += `<div class="link-item"><small>${n1} ➡ ${n2}</small><button class="btn-mini" onclick="removeLink(${i})">X</button></div>`
+        
+        const html = `
+            <div class="link-card">
+                <div class="link-info">
+                    <span style="font-weight:600; color:#fff;">${n1}</span>
+                    <i class="fas fa-arrow-right link-arrow"></i>
+                    <span style="font-weight:600; color:#fff;">${n2}</span>
+                </div>
+                <button class="btn-icon-trash" onclick="removeLink(${i})" title="Remover Conexão">
+                    <i class="fas fa-trash-alt"></i>
+                </button>
+            </div>
+        `;
+        l.innerHTML += html;
     });
 }
 
@@ -362,17 +391,17 @@ function onDocumentMouseDown(event) {
         if(net) {
             document.getElementById('sector-ip').innerText = "Switch IP: " + (net.ip || 'Não Configurado');
             
-            // --- NOVA VISUALIZAÇÃO DE DISPOSITIVOS ---
+            // Visualização detalhada (Switch + Equipamentos)
             let detailsHTML = '';
             
-            // Status do Switch Principal
+            // Status do Switch
             if(net.online) {
                 detailsHTML += `<div style="margin-bottom:8px; color:#2dd4bf; font-weight:bold;">✅ Switch: ONLINE</div>`;
             } else {
                 detailsHTML += `<div style="margin-bottom:8px; color:#fb7185; font-weight:bold;">❌ Switch: OFFLINE</div>`;
             }
 
-            // Lista de Dispositivos (Impressoras, etc)
+            // Lista de Equipamentos
             if(net.devices && net.devices.length > 0) {
                 detailsHTML += `<div style="border-top:1px solid rgba(255,255,255,0.1); padding-top:5px; margin-top:5px;">`;
                 detailsHTML += `<small style="color:#94a3b8">Equipamentos:</small>`;
@@ -459,13 +488,12 @@ function animate() {
             INTERSECTED = hits[0].object;
             if(INTERSECTED.userData.type==='building') {
                 const isErr = statusMap[INTERSECTED.userData.id]?.isDown;
-                if(isErr) INTERSECTED.material.color.setHex(0xff4444); // Vermelho mais claro no hover
-                else INTERSECTED.material.color.setHex(0x38bdf8); // Azul highlight
+                if(isErr) INTERSECTED.material.color.setHex(0xff4444); 
+                else INTERSECTED.material.color.setHex(0x38bdf8); 
             }
             document.body.style.cursor = 'pointer';
         }
     } else {
-        // Nada sob o mouse
         if(INTERSECTED && INTERSECTED.userData.type==='building') {
             const isErr = statusMap[INTERSECTED.userData.id]?.isDown;
             if(isErr) INTERSECTED.material.color.setHex(0xff0000);
@@ -475,7 +503,7 @@ function animate() {
         document.body.style.cursor = 'default';
     }
 
-    // Animação dos dados nos cabos
+    // Animação dos pacotes nos cabos
     cables.forEach(o => {
         if(o.userData.curve) {
             o.userData.progress += o.userData.speed;
@@ -489,5 +517,5 @@ function animate() {
     labelRenderer.render(scene, camera);
 }
 
-// Inicia tudo
+// Inicia aplicação
 init();
