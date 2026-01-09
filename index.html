@@ -87,6 +87,10 @@
                     <i class="fas fa-server"></i> SERVIDORES E IPs
                 </button>
 
+                <button onclick="toggleDevicePanel()" class="btn-menu-server">
+                    <i class="fas fa-print"></i> GERENCIAR EQUIPAMENTOS
+                </button>
+
                 <button onclick="toggleHistoryPanel()" class="btn-menu-server">
                     <i class="fas fa-history"></i> HISTÓRICO DE QUEDAS
                 </button>
@@ -105,7 +109,7 @@
 
             <div class="sidebar-footer">
                 <p>Sistema Integrado</p>
-                <small>v6.1 - Live Ping</small>
+                <small>v6.2 - Live Ping</small>
             </div>
         </aside>
 
@@ -126,7 +130,7 @@
 
             <div class="floating-legend">
                 <div class="leg"><span class="line data"></span> Online</div>
-                <div class="leg"><span class="line error"></span> Offline</div>
+                <div class="leg"><span class="line error"></span> Offline/Alerta</div>
             </div>
         </main>
 
@@ -151,11 +155,11 @@
     
     <script src="script.js"></script>            
     <script src="server_manager.js"></script>    
+    <script src="device_manager.js"></script>
     <script src="history_manager.js"></script>   
     <script src="simulation_manager.js"></script> 
     
     <script>
-        // Função auxiliar para o menu mobile (caso necessário)
         function toggleSidebar() {
             document.getElementById('sidebar').classList.toggle('mobile-open');
         }

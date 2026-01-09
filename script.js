@@ -12,7 +12,7 @@ let INTERSECTED;
 const SETORES = [
     { id: "PORTARIA", name: "Portaria", pos: { x: 21, z: 55 }, size: [3, 3, 3] },
     { id: "BALANCA", name: "Balança", pos: { x: 9, z: 51 }, size: [4, 3, 4] },
-    { id: "PCTS", name: "PCTS", pos: { x: 7, z: 41 }, size: [6, 4, 6] },
+    { id: "PCTS", name: "PCTS", pos: { x: 7, z: 37 }, size: [3, 3, 3] },
     { id: "COI", name: "COI", pos: { x: -9, z: -13 }, size: [5, 4, 5] },
     { id: "VINHACA", name: "Vinhaça", pos: { x: -23, z: -28 }, size: [2, 2, 2] },
     { id: "SUPERVISAO", name: "Supervisão", pos: { x: 10, z: -21 }, size: [8, 4, 8] },
@@ -21,7 +21,7 @@ const SETORES = [
     { id: "REFEITORIO", name: "Refeitório", pos: { x: 40, z: 32 }, size: [6, 3, 5] }
 ];
 
-// Ligações da rede (Topologia)
+// Ligações iniciais
 let activeLinks = [
     { from: "CPD", to: "REFEITORIO" },
     { from: "CPD", to: "OLD" },
@@ -33,7 +33,7 @@ let activeLinks = [
     { from: "BALANCA", to: "PORTARIA" }
 ];
 
-// Variável global para armazenar o status com cascata
+// Variável global para armazenar o status
 let finalSectorStatus = {}; 
 
 function init() {
@@ -78,16 +78,15 @@ function init() {
     sun.castShadow = true;
     scene.add(sun);
 
-    // Inicialização dos elementos
+    // Inicialização
     createEnvironment();
     renderStructures();
     renderCables();
-    
     initEditor();
     
     // Inicia Monitoramento
     checkNetworkStatus();
-    setInterval(checkNetworkStatus, 1000); 
+    setInterval(checkNetworkStatus, 3000); // Atualiza a cada 3s
 
     // Eventos
     window.addEventListener('resize', onWindowResize);
@@ -100,11 +99,8 @@ function init() {
 
 function createEnvironment() {
     const textureLoader = new THREE.TextureLoader();
-    
-    // Tenta carregar a imagem. Se falhar, usa um chão cinza automaticamente.
     textureLoader.load('./img/3.png', 
         function(texture) {
-            // SUCESSO: Usa a imagem
             const planeMat = new THREE.MeshStandardMaterial({ map: texture, roughness: 0.9, metalness: 0.0 });
             const floor = new THREE.Mesh(new THREE.PlaneGeometry(120, 120), planeMat);
             floor.rotation.x = -Math.PI / 2;
@@ -112,10 +108,9 @@ function createEnvironment() {
             floor.receiveShadow = true;
             scene.add(floor);
         },
-        undefined, // onProgress (não usado)
+        undefined,
         function(err) {
-            // ERRO: Usa cor sólida (Fallback)
-            console.warn("Imagem da planta não carregada. Usando base sólida.");
+            // Fallback se a imagem não carregar
             const planeMat = new THREE.MeshStandardMaterial({ color: 0x222222, side: THREE.DoubleSide });
             const floor = new THREE.Mesh(new THREE.PlaneGeometry(120, 120), planeMat);
             floor.rotation.x = -Math.PI / 2;
@@ -130,6 +125,7 @@ function renderStructures() {
     const ringGeo = new THREE.RingGeometry(2.5, 3.5, 32); 
 
     SETORES.forEach(s => {
+        // Material base do prédio
         const mat = new THREE.MeshPhysicalMaterial({ 
             color: 0x1e293b, 
             transparent: true, 
@@ -149,14 +145,14 @@ function renderStructures() {
         scene.add(mesh);
         interactables.push(mesh);
 
-        // Bordas
+        // Bordas neon
         const edges = new THREE.EdgesGeometry(new THREE.BoxGeometry(mesh.scale.x, mesh.scale.y, mesh.scale.z));
         const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x38bdf8 }));
         line.position.copy(mesh.position);
         scene.add(line);
         mesh.userData.lineObj = line; 
 
-        // Anel Pulsante
+        // Anel de Alerta (Pulsante)
         const ringMat = new THREE.MeshBasicMaterial({ 
             color: 0xff0000, 
             transparent: true, 
@@ -171,7 +167,7 @@ function renderStructures() {
         scene.add(ring);
         pulsingRings.push(ring); 
 
-        // Rótulo
+        // Rótulo HTML
         const labelDiv = document.createElement('div');
         labelDiv.className = 'label-tag';
         labelDiv.textContent = s.name;
@@ -180,7 +176,7 @@ function renderStructures() {
         mesh.add(label);
     });
 
-    // Tanques (Decoração)
+    // Tanques (Decorativos)
     const tankGeo = new THREE.CylinderGeometry(2.5, 2.5, 3.5, 40);
     const tankMat = new THREE.MeshStandardMaterial({ color: 0x475569 });
     for(let i=0; i<5; i++) {
@@ -227,7 +223,7 @@ function drawCable(p1, p2, idFrom, idTo) {
     scene.add(tube);
     cables.push(tube);
     
-    // Pacote de dados
+    // Pacote de dados (animação)
     const packetGeo = new THREE.BoxGeometry(0.4, 0.4, 0.4); 
     const packetMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
     const packet = new THREE.Mesh(packetGeo, packetMat);
@@ -236,7 +232,7 @@ function drawCable(p1, p2, idFrom, idTo) {
     cables.push(packet);
 }
 
-// === MONITORAMENTO INTELIGENTE (COM CASCATA) ===
+// === MONITORAMENTO INTELIGENTE (ATUALIZADO) ===
 async function checkNetworkStatus() {
     let serverData = [];
     try {
@@ -248,65 +244,35 @@ async function checkNetworkStatus() {
     networkData = serverData;
     let hasError = false;
 
-    // 1. MONTAR ÁRVORE DE DEPENDÊNCIA
-    const topology = {}; 
-    SETORES.forEach(s => topology[s.id] = []);
-    activeLinks.forEach(l => {
-        if(!topology[l.from]) topology[l.from] = [];
-        topology[l.from].push(l.to);
-    });
-
-    // 2. STATUS INICIAL (Simulação ou Real)
-    const simState = window.SIMULATION_STATE || {};
+    // Mapa de Status
     const statusMap = {}; 
 
     SETORES.forEach(s => {
         const net = serverData.find(d => d.id === s.id);
-        const isSimulated = simState[s.id] === true;
-        const isPingFail = net && !net.online;
-
-        if (isSimulated) {
-            statusMap[s.id] = { isDown: true, reason: 'Simulação' };
-        } else if (isPingFail) {
-            statusMap[s.id] = { isDown: true, reason: 'Falha de Rede' };
-        } else {
-            statusMap[s.id] = { isDown: false, reason: 'Online' };
-        }
+        
+        // Se net.hasIssue for true, significa que o switch OU algum device caiu
+        const isProblem = net ? net.hasIssue : false;
+        
+        statusMap[s.id] = { isDown: isProblem };
+        if(isProblem) hasError = true;
     });
-
-    // 3. PROPAGAR CASCATA (BFS)
-    const queue = Object.keys(statusMap).filter(id => statusMap[id].isDown);
-    const visited = new Set(queue);
-
-    while(queue.length > 0) {
-        const parentId = queue.shift();
-        const children = topology[parentId] || [];
-
-        children.forEach(childId => {
-            if (!statusMap[childId].isDown) {
-                statusMap[childId] = { isDown: true, reason: 'Sem Sinal (Cascata)' };
-                if (!visited.has(childId)) {
-                    visited.add(childId);
-                    queue.push(childId);
-                }
-            }
-        });
-    }
 
     finalSectorStatus = statusMap;
 
-    // 4. ATUALIZAR 3D (Prédios)
+    // Atualiza Visual dos Prédios
     interactables.forEach(mesh => {
         if(mesh.userData.type === 'building') {
             const statusInfo = statusMap[mesh.userData.id] || { isDown: false };
             const ring = pulsingRings.find(r => r.userData.id === mesh.userData.id);
 
             if (statusInfo.isDown) {
+                // COR DE ALERTA (Vermelho)
                 mesh.material.color.setHex(0xff0000); 
                 if(mesh.userData.lineObj) mesh.userData.lineObj.material.color.setHex(0xff0000);
                 if(ring) ring.visible = true;
-                hasError = true;
             } else {
+                // COR NORMAL (Azul Escuro / Neon)
+                // Se não estiver com mouse em cima, volta ao normal
                 if(INTERSECTED !== mesh) mesh.material.color.setHex(0x1e293b);
                 if(mesh.userData.lineObj) mesh.userData.lineObj.material.color.setHex(0x38bdf8);
                 if(ring) ring.visible = false;
@@ -314,7 +280,7 @@ async function checkNetworkStatus() {
         }
     });
 
-    // 5. ATUALIZAR CABOS
+    // Atualiza Cabos
     cables.forEach(obj => {
         if(obj.userData.isCable) {
             const fromStatus = statusMap[obj.userData.from];
@@ -330,12 +296,12 @@ async function checkNetworkStatus() {
         }
     });
 
-    // 6. UI Global
+    // UI Global
     const statusDot = document.getElementById('status-dot');
     const globalText = document.getElementById('global-text');
     if(hasError) {
         statusDot.className = "dot danger";
-        globalText.innerText = "ALERTA CRÍTICO";
+        globalText.innerText = "ALERTA / FALHA";
         globalText.style.color = "#fb7185";
     } else {
         statusDot.className = "dot active";
@@ -344,7 +310,7 @@ async function checkNetworkStatus() {
     }
 }
 
-// === INTERFACE DO USUÁRIO ===
+// === INTERFACE DO EDITOR DE REDE ===
 function initEditor() {
     const s1 = document.getElementById('from-sector');
     const s2 = document.getElementById('to-sector');
@@ -384,6 +350,7 @@ function renderLinksList() {
     });
 }
 
+// === INTERAÇÃO DO MOUSE ===
 function onDocumentMouseDown(event) {
     if(INTERSECTED) {
         document.getElementById('sector-info').classList.remove('hidden');
@@ -392,18 +359,43 @@ function onDocumentMouseDown(event) {
         const net = networkData.find(n => n.id === INTERSECTED.userData.id);
         const msg = document.getElementById('sector-status-msg');
         
-        const statusInfo = finalSectorStatus[INTERSECTED.userData.id] || { isDown: false, reason: 'Desconhecido' };
-
         if(net) {
-            document.getElementById('sector-ip').innerText = "IP: " + net.ip;
-            if(statusInfo.isDown) {
-                msg.innerHTML = `<b style='color:#fb7185'>OFFLINE (${statusInfo.reason})</b>`;
+            document.getElementById('sector-ip').innerText = "Switch IP: " + (net.ip || 'Não Configurado');
+            
+            // --- NOVA VISUALIZAÇÃO DE DISPOSITIVOS ---
+            let detailsHTML = '';
+            
+            // Status do Switch Principal
+            if(net.online) {
+                detailsHTML += `<div style="margin-bottom:8px; color:#2dd4bf; font-weight:bold;">✅ Switch: ONLINE</div>`;
             } else {
-                msg.innerHTML = "<b style='color:#2dd4bf'>ONLINE</b>";
+                detailsHTML += `<div style="margin-bottom:8px; color:#fb7185; font-weight:bold;">❌ Switch: OFFLINE</div>`;
             }
+
+            // Lista de Dispositivos (Impressoras, etc)
+            if(net.devices && net.devices.length > 0) {
+                detailsHTML += `<div style="border-top:1px solid rgba(255,255,255,0.1); padding-top:5px; margin-top:5px;">`;
+                detailsHTML += `<small style="color:#94a3b8">Equipamentos:</small>`;
+                
+                net.devices.forEach(dev => {
+                    const icon = dev.online ? '✅' : '🔴';
+                    const color = dev.online ? '#cbd5e1' : '#fb7185';
+                    detailsHTML += `
+                        <div style="font-size:11px; display:flex; justify-content:space-between; margin-top:3px; color:${color}">
+                            <span>${icon} ${dev.name}</span>
+                            <span style="opacity:0.7">${dev.ip}</span>
+                        </div>
+                    `;
+                });
+                detailsHTML += `</div>`;
+            } else {
+                detailsHTML += `<div style="font-size:10px; color:#64748b; margin-top:5px;">Nenhum equipamento extra monitorado.</div>`;
+            }
+
+            msg.innerHTML = detailsHTML;
         } else {
-            document.getElementById('sector-ip').innerText = "Sem monitoramento";
-            msg.innerText = "";
+            document.getElementById('sector-ip').innerText = "Sem dados";
+            msg.innerText = "Aguardando servidor...";
         }
     }
 }
@@ -441,6 +433,7 @@ function animate() {
 
     const time = Date.now() * 0.003; 
 
+    // Animação dos Anéis de Alerta
     pulsingRings.forEach(ring => {
         if(ring.visible) {
             const scale = 1 + (Math.sin(time) * 0.3 + 0.3);
@@ -456,26 +449,33 @@ function animate() {
 
     if(hits.length>0) {
         if(INTERSECTED!=hits[0].object) {
+            // Restaura cor do objeto anterior
             if(INTERSECTED && INTERSECTED.userData.type==='building') {
                 const isErr = statusMap[INTERSECTED.userData.id]?.isDown;
-                if(!isErr) INTERSECTED.material.color.setHex(0x1e293b);
+                if(isErr) INTERSECTED.material.color.setHex(0xff0000);
+                else INTERSECTED.material.color.setHex(0x1e293b);
             }
+            // Define novo objeto focado
             INTERSECTED = hits[0].object;
             if(INTERSECTED.userData.type==='building') {
                 const isErr = statusMap[INTERSECTED.userData.id]?.isDown;
-                if(!isErr) INTERSECTED.material.color.setHex(0x38bdf8);
+                if(isErr) INTERSECTED.material.color.setHex(0xff4444); // Vermelho mais claro no hover
+                else INTERSECTED.material.color.setHex(0x38bdf8); // Azul highlight
             }
             document.body.style.cursor = 'pointer';
         }
     } else {
+        // Nada sob o mouse
         if(INTERSECTED && INTERSECTED.userData.type==='building') {
             const isErr = statusMap[INTERSECTED.userData.id]?.isDown;
-            if(!isErr) INTERSECTED.material.color.setHex(0x1e293b);
+            if(isErr) INTERSECTED.material.color.setHex(0xff0000);
+            else INTERSECTED.material.color.setHex(0x1e293b);
         }
         INTERSECTED = null;
         document.body.style.cursor = 'default';
     }
 
+    // Animação dos dados nos cabos
     cables.forEach(o => {
         if(o.userData.curve) {
             o.userData.progress += o.userData.speed;
@@ -489,4 +489,5 @@ function animate() {
     labelRenderer.render(scene, camera);
 }
 
+// Inicia tudo
 init();
