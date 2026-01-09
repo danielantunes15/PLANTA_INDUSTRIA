@@ -146,7 +146,7 @@ function renderStructures() {
         scene.add(line);
         mesh.userData.lineObj = line; 
 
-        // Anel de Alerta (Pulsante)
+        // Anel de Alerta (Pulsante no chão)
         const ringMat = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0, side: THREE.DoubleSide });
         const ring = new THREE.Mesh(ringGeo, ringMat);
         ring.rotation.x = -Math.PI / 2;
@@ -156,31 +156,41 @@ function renderStructures() {
         scene.add(ring);
         pulsingRings.push(ring); 
 
-        // Rótulo HTML (Nome do Setor)
+        // === ETIQUETA COM NOME + ÍCONE (Unificados) ===
+        // Container Principal (Flexbox para alinhar Lado a Lado)
+        const containerDiv = document.createElement('div');
+        containerDiv.style.display = 'flex';
+        containerDiv.style.alignItems = 'center';
+        containerDiv.style.gap = '8px'; // Espaço entre nome e ícone
+        containerDiv.style.pointerEvents = 'none'; // Não bloqueia cliques
+        
+        // 1. Nome do Setor
         const labelDiv = document.createElement('div');
         labelDiv.className = 'label-tag';
         labelDiv.textContent = s.name;
-        const label = new THREE.CSS2DObject(labelDiv);
-        label.position.set(0, (mesh.scale.y/2) + 1.5, 0);
-        mesh.add(label);
+        
+        // 2. Ícone de Alerta (Inicialmente oculto)
+        const warnDiv = document.createElement('div');
+        warnDiv.className = 'warning-badge';
+        warnDiv.innerHTML = '<i class="fas fa-exclamation-triangle"></i>'; 
+        warnDiv.style.display = 'none'; // Escondido por padrão
+        // Ajuste fino para o ícone não "pular" muito alto na animação CSS
+        warnDiv.style.fontSize = '18px'; 
 
-        // === ÍCONE DE ALERTA (CORRIGIDO: Mais perto do prédio) ===
-        const warnContainer = document.createElement('div');
-        const warnIcon = document.createElement('div');
-        warnIcon.className = 'warning-badge';
-        warnIcon.innerHTML = '<i class="fas fa-exclamation-triangle"></i>'; 
-        warnContainer.appendChild(warnIcon);
+        // Monta o conjunto
+        containerDiv.appendChild(labelDiv);
+        containerDiv.appendChild(warnDiv);
 
-        const warnLabel = new THREE.CSS2DObject(warnContainer);
-        // AQUI ESTÁ A CORREÇÃO: Mudei de +4 para +1.5
-        warnLabel.position.set(0, (mesh.scale.y/2) + 1.5, 0); 
-        warnLabel.visible = false; 
+        // Cria o objeto 3D ÚNICO
+        const labelObj = new THREE.CSS2DObject(containerDiv);
+        labelObj.position.set(0, (mesh.scale.y/2) + 1.5, 0); // Fica logo acima do prédio
+        mesh.add(labelObj);
 
-        mesh.add(warnLabel);
-        mesh.userData.warningObj = warnLabel;
+        // Salva referência do ícone DOM para ligar/desligar depois
+        mesh.userData.warningIconDom = warnDiv;
     });
 
-    // Tanques
+    // Tanques (Decoração)
     const tankGeo = new THREE.CylinderGeometry(2.5, 2.5, 3.5, 40);
     const tankMat = new THREE.MeshStandardMaterial({ color: 0x475569 });
     for(let i=0; i<5; i++) {
@@ -235,7 +245,7 @@ function drawCable(p1, p2, idFrom, idTo) {
     cables.push(packet);
 }
 
-// === MONITORAMENTO INTELIGENTE ===
+// === MONITORAMENTO INTELIGENTE (ATUALIZADO) ===
 async function checkNetworkStatus() {
     let serverData = [];
     try {
@@ -261,22 +271,24 @@ async function checkNetworkStatus() {
 
     finalSectorStatus = statusMap;
 
-    // Atualiza Visual 3D
+    // Atualiza Visual 3D e Labels
     interactables.forEach(mesh => {
         if(mesh.userData.type === 'building') {
             const info = statusMap[mesh.userData.id] || { status: 'OK' };
             const ring = pulsingRings.find(r => r.userData.id === mesh.userData.id);
-            const warnLabel = mesh.userData.warningObj; 
+            const warnDom = mesh.userData.warningIconDom; // Elemento HTML do ícone
 
-            // Reset
+            // Reset visual
             if(INTERSECTED !== mesh) mesh.material.color.setHex(0x1e293b);
             if(mesh.userData.lineObj) mesh.userData.lineObj.material.color.setHex(0x38bdf8);
             if(ring) ring.visible = false;
-            if(warnLabel) warnLabel.visible = false;
+            
+            // Controle do Ícone HTML
+            if(warnDom) warnDom.style.display = 'none';
 
             // Aplica Estados
             if (info.status === 'CRITICAL') {
-                // VERMELHO (Switch Caiu)
+                // VERMELHO (Switch OFF)
                 mesh.material.color.setHex(0xff0000); 
                 if(mesh.userData.lineObj) mesh.userData.lineObj.material.color.setHex(0xff0000);
                 if(ring) {
@@ -285,7 +297,7 @@ async function checkNetworkStatus() {
                 }
             } 
             else if (info.status === 'WARNING') {
-                // AMARELO (Equipamento Caiu)
+                // AMARELO (Device OFF)
                 mesh.material.color.setHex(0xffaa00);
                 if(mesh.userData.lineObj) mesh.userData.lineObj.material.color.setHex(0xfacc15);
                 
@@ -294,8 +306,9 @@ async function checkNetworkStatus() {
                     ring.visible = true;
                 }
                 
-                if(warnLabel) {
-                    warnLabel.visible = true; 
+                // Exibe ícone ao lado do nome
+                if(warnDom) {
+                    warnDom.style.display = 'block';
                 }
             }
         }
