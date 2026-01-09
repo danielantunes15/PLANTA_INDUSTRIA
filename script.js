@@ -28,7 +28,7 @@ let activeLinks = [
     { from: "OLD", to: "SUPERVISAO" },
     { from: "OLD", to: "COI" },
     { from: "OLD", to: "PCTS" },
-    { from: "SUPERVISAO", to: "VINHACA" },
+    { from: "COI", to: "VINHACA" },
     { from: "PCTS", to: "BALANCA" },
     { from: "BALANCA", to: "PORTARIA" }
 ];
